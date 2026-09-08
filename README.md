@@ -12,11 +12,74 @@ The architecture converts raw, unmanaged RTSP CCTV video feeds into prioritized,
 
 ---
 
-## 🏗️ System Design Flowchart (SIH PPT Architecture)
+## 📊 System Decision & Logic Flowchart (Presentation Style)
+
+![System Decision Flowchart](flowchart_decision_tree_ppt.jpg)
+
+### Algorithmic Decision Tree (Mermaid)
+
+```mermaid
+flowchart TD
+    %% Styling Classes for clean white cards and decision diamonds
+    classDef card fill:#ffffff,stroke:#94a3b8,stroke-width:1.5px,color:#0f172a,rx:6px,ry:6px;
+    classDef decision fill:#ffffff,stroke:#475569,stroke-width:2px,color:#0f172a;
+    classDef alert fill:#fff1f2,stroke:#f43f5e,stroke-width:2px,color:#9f1239;
+
+    START["Start: Existing CCTV Cameras<br/>(CAM-01, CAM-02, CAM-03)"]:::card
+    INGEST["RTSP Stream Ingestion<br/>(Decode, Resize & Normalize)"]:::card
+    QUEUE["Multi-Camera Queue Buffer<br/>(Route Streams & Balance Load)"]:::card
+
+    START --> INGEST --> QUEUE
+
+    DEC_TARGET{"Target Detected?<br/>(Person / Vehicle)"}:::decision
+    QUEUE --> DEC_TARGET
+
+    DISCARD["Log Routine Frame<br/>& Continue Stream"]:::card
+    TRACK["ByteTrack Engine<br/>Assign Track ID & Velocity Vector"]:::card
+
+    DEC_TARGET -- No --> DISCARD
+    DEC_TARGET -- Yes --> TRACK
+
+    DEC_SECONDARY{"Secondary Model<br/>Required?"}:::decision
+    TRACK --> DEC_SECONDARY
+
+    OCR_FACE["Run RetinaFace / ArcFace<br/>& PaddleOCR License Plate"]:::card
+    RULES["Spatial & Temporal Rules Engine<br/>(Polygon Geometry + Dwell Timer)"]:::card
+
+    DEC_SECONDARY -- Yes --> OCR_FACE --> RULES
+    DEC_SECONDARY -- No --> RULES
+
+    DEC_BREACH{"Security Breach or Loitering?<br/>• Virtual Fence Crossed<br/>• Dwell Time > 4s<br/>• Night Curfew Movement"}:::decision
+    RULES --> DEC_BREACH
+
+    NORMAL_LIVE["Display Normal Live Feed<br/>to Operator"]:::card
+    ALERT_EVI["Generate Alert & Capture<br/>Evidence Snapshot / Video Clip"]:::alert
+
+    DEC_BREACH -- No --> NORMAL_LIVE
+    DEC_BREACH -- Yes --> ALERT_EVI
+
+    POSTGRES["Store in PostgreSQL<br/>& Broadcast via WebSocket"]:::card
+    DASH["Display on Security<br/>Operator Dashboard"]:::card
+
+    ALERT_EVI --> POSTGRES --> DASH
+
+    DEC_OP{"Operator Action<br/>Required?"}:::decision
+    DASH --> DEC_OP
+
+    DISPATCH["Escalate & Dispatch<br/>Response Team"]:::card
+    ARCHIVE["Acknowledge &<br/>Archive Incident"]:::card
+
+    DEC_OP -- Yes --> DISPATCH
+    DEC_OP -- No --> ARCHIVE
+```
+
+---
+
+## 🏗️ Technical Approach Architecture (Stage-by-Stage Flowchart)
 
 ![IBVAP System Design Flowchart](flowchart_sih_ppt.jpg)
 
-Below is the complete end-to-end system design flowchart as presented in the **Technical Approach** slide. It renders natively on GitHub and markdown viewers, and can also be modified in code:
+Below is the complete end-to-end multi-stage pipeline as presented in the **Technical Approach** slide:
 
 ```mermaid
 flowchart LR
