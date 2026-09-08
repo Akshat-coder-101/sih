@@ -12,87 +12,72 @@ The architecture converts raw, unmanaged RTSP CCTV video feeds into prioritized,
 
 ---
 
-## 📊 System Decision & Logic Flowchart (Presentation Style)
+## 📊 System Design & Decision Flowchart (Presentation Style)
 
-![System Decision Flowchart](flowchart_decision_tree_ppt.jpg)
+![System Design Flowchart](flowchart_decision_tree_ppt.png)
 
-### Algorithmic Decision Tree (Mermaid)
+### Algorithmic Decision Tree (Mermaid Architecture)
 
 ```mermaid
 flowchart LR
     %% Styling Classes
     classDef card fill:#ffffff,stroke:#94a3b8,stroke-width:1.5px,color:#0f172a,rx:8px,ry:8px;
-    classDef decision fill:#ffffff,stroke:#475569,stroke-width:2px,color:#0f172a;
+    classDef decision fill:#ffffff,stroke:#334155,stroke-width:2px,color:#0f172a;
     classDef alert fill:#fff1f2,stroke:#f43f5e,stroke-width:2px,color:#9f1239;
     classDef subg fill:#f8fafc,stroke:#e2e8f0,stroke-width:1.5px,color:#334155;
 
-    %% Column 1: Ingestion
-    subgraph COL1["1. RTSP Ingestion & Buffer"]
+    %% Column 1: Ingestion & Target Filtering
+    subgraph COL1["1. Stream Ingestion & Screening"]
         direction TB
         START["Start: Existing CCTV Cameras<br/>(CAM-01, CAM-02, CAM-03)"]:::card
         INGEST["RTSP Stream Ingestion<br/>(Decode, Resize & Keyframes)"]:::card
-        QUEUE["Multi-Camera Queue Buffer<br/>(Route Streams & Balance Load)"]:::card
+        QUEUE["Multi-Camera Queue Buffer<br/>(Route Streams & Balance GPU Load)"]:::card
         DEC_TARGET{"Target Detected?<br/>(Person / Vehicle)"}:::decision
-        DISCARD["Routine Frame<br/>Log & Continue"]:::card
+        DISCARD["Log Routine Frame<br/>& Continue Stream"]:::card
 
         START --> INGEST --> QUEUE --> DEC_TARGET
         DEC_TARGET -- No --> DISCARD
     end
     class COL1 subg;
 
-    %% Column 2: AI Pipeline & Tracking
-    subgraph COL2["2. AI Analysis & Tracking"]
+    %% Column 2: AI Pipeline & Intelligence
+    subgraph COL2["2. AI Analysis & Intelligence"]
         direction TB
         TRACK["ByteTrack Tracking Engine<br/>(Kalman Filter: ID & Velocity)"]:::card
-        DEC_SECONDARY{"Secondary Model?<br/>(Biometric / Plate)"}:::decision
-        OCR_FACE["Deep Feature Models<br/>RetinaFace & PaddleOCR"]:::card
-        RULES["Spatial-Temporal Rules Engine<br/>(Virtual Fencing + Dwell Time)"]:::card
+        DEC_SECONDARY{"Secondary Model?<br/>(Face / Plate)"}:::decision
+        OCR_FACE["Run RetinaFace &<br/>PaddleOCR ANPR"]:::card
+        DEC_BREACH{"Security Breach or Loitering?<br/>(Fence Cross / Dwell > 4s)"}:::decision
+        NORMAL_LIVE["Display Normal Live Feed<br/>to Security Operator"]:::card
 
         TRACK --> DEC_SECONDARY
-        DEC_SECONDARY -- Yes --> OCR_FACE --> RULES
-        DEC_SECONDARY -- No --> RULES
+        DEC_SECONDARY -- Yes --> OCR_FACE --> DEC_BREACH
+        DEC_SECONDARY -- No --> DEC_BREACH
+        DEC_BREACH -- No --> NORMAL_LIVE
     end
     class COL2 subg;
 
-    %% Column 3: Threat Intelligence
-    subgraph COL3["3. Threat Intelligence Rules"]
+    %% Column 3: Command Center & Tactical Response
+    subgraph COL3["3. Command Center & Response"]
         direction TB
-        DEC_BREACH{"Security Breach?<br/>(Fence Cross / Curfew / Loiter)"}:::decision
-        NORMAL_LIVE["Authorized Activity<br/>Stream Live Feed Only"]:::card
-        ALERT_EVI["Threat Event Triggered<br/>(Priority Score Calculated)"]:::alert
-        EVIDENCE["Forensic Evidence Vault<br/>(HD Snapshot + MP4 Clip)"]:::card
+        GEN_ALERT["Generate Threat Event & Evidence<br/>(HD Snapshot + 10s MP4 Clip)"]:::alert
+        GATEWAY["Store in PostgreSQL DB<br/>& Broadcast via WebSocket (<200ms)"]:::card
+        DASH["React Security Dashboard<br/>(Live Feed Matrix & Audio Alert)"]:::card
+        DEC_OP{"Operator Action<br/>Required?"}:::decision
+        DISPATCH["Escalate & Dispatch Unit<br/>(Quick Response Team QRT)"]:::alert
 
-        DEC_BREACH -- No --> NORMAL_LIVE
-        DEC_BREACH -- Yes --> ALERT_EVI --> EVIDENCE
+        GEN_ALERT --> GATEWAY --> DASH --> DEC_OP
+        DEC_OP -- Yes --> DISPATCH
     end
     class COL3 subg;
 
-    %% Column 4: Command Center & Action
-    subgraph COL4["4. Command Center & Response"]
-        direction TB
-        GATEWAY["FastAPI & PostgreSQL Gateway<br/>(Broadcast WebSocket &lt;200ms)"]:::card
-        DASH["React Command Dashboard<br/>(Live Feed Matrix & Audio Alert)"]:::card
-        DEC_OP{"Operator Action?<br/>(Verify Threat)"}:::decision
-        DISPATCH["Escalate & Dispatch Unit<br/>(Quick Response Team QRT)"]:::alert
-        ARCHIVE["Acknowledge & Archive<br/>(Signed Incident Log)"]:::card
-
-        GATEWAY --> DASH --> DEC_OP
-        DEC_OP -- Action --> DISPATCH
-        DEC_OP -- Routine --> ARCHIVE
-    end
-    class COL4 subg;
-
-    %% Cross-Column Interconnections
+    %% Cross-Column Stream Flow
     DEC_TARGET == Yes ==> TRACK
-    RULES ==> DEC_BREACH
-    EVIDENCE ==> GATEWAY
+    DEC_BREACH == Yes ==> GEN_ALERT
 ```
 
 ---
 
-## 🏗️ Technical Approach Architecture (Stage-by-Stage Flowchart)
-
-![IBVAP System Design Flowchart](flowchart_sih_ppt.jpg)
+## 🏗️ Technical Approach Stage Breakdown
 
 Below is the complete end-to-end multi-stage pipeline as presented in the **Technical Approach** slide:
 
