@@ -19,58 +19,73 @@ The architecture converts raw, unmanaged RTSP CCTV video feeds into prioritized,
 ### Algorithmic Decision Tree (Mermaid)
 
 ```mermaid
-flowchart TD
-    %% Styling Classes for clean white cards and decision diamonds
-    classDef card fill:#ffffff,stroke:#94a3b8,stroke-width:1.5px,color:#0f172a,rx:6px,ry:6px;
+flowchart LR
+    %% Styling Classes
+    classDef card fill:#ffffff,stroke:#94a3b8,stroke-width:1.5px,color:#0f172a,rx:8px,ry:8px;
     classDef decision fill:#ffffff,stroke:#475569,stroke-width:2px,color:#0f172a;
     classDef alert fill:#fff1f2,stroke:#f43f5e,stroke-width:2px,color:#9f1239;
+    classDef subg fill:#f8fafc,stroke:#e2e8f0,stroke-width:1.5px,color:#334155;
 
-    START["Start: Existing CCTV Cameras<br/>(CAM-01, CAM-02, CAM-03)"]:::card
-    INGEST["RTSP Stream Ingestion<br/>(Decode, Resize & Normalize)"]:::card
-    QUEUE["Multi-Camera Queue Buffer<br/>(Route Streams & Balance Load)"]:::card
+    %% Column 1: Ingestion
+    subgraph COL1["1. RTSP Ingestion & Buffer"]
+        direction TB
+        START["Start: Existing CCTV Cameras<br/>(CAM-01, CAM-02, CAM-03)"]:::card
+        INGEST["RTSP Stream Ingestion<br/>(Decode, Resize & Keyframes)"]:::card
+        QUEUE["Multi-Camera Queue Buffer<br/>(Route Streams & Balance Load)"]:::card
+        DEC_TARGET{"Target Detected?<br/>(Person / Vehicle)"}:::decision
+        DISCARD["Routine Frame<br/>Log & Continue"]:::card
 
-    START --> INGEST --> QUEUE
+        START --> INGEST --> QUEUE --> DEC_TARGET
+        DEC_TARGET -- No --> DISCARD
+    end
+    class COL1 subg;
 
-    DEC_TARGET{"Target Detected?<br/>(Person / Vehicle)"}:::decision
-    QUEUE --> DEC_TARGET
+    %% Column 2: AI Pipeline & Tracking
+    subgraph COL2["2. AI Analysis & Tracking"]
+        direction TB
+        TRACK["ByteTrack Tracking Engine<br/>(Kalman Filter: ID & Velocity)"]:::card
+        DEC_SECONDARY{"Secondary Model?<br/>(Biometric / Plate)"}:::decision
+        OCR_FACE["Deep Feature Models<br/>RetinaFace & PaddleOCR"]:::card
+        RULES["Spatial-Temporal Rules Engine<br/>(Virtual Fencing + Dwell Time)"]:::card
 
-    DISCARD["Log Routine Frame<br/>& Continue Stream"]:::card
-    TRACK["ByteTrack Engine<br/>Assign Track ID & Velocity Vector"]:::card
+        TRACK --> DEC_SECONDARY
+        DEC_SECONDARY -- Yes --> OCR_FACE --> RULES
+        DEC_SECONDARY -- No --> RULES
+    end
+    class COL2 subg;
 
-    DEC_TARGET -- No --> DISCARD
-    DEC_TARGET -- Yes --> TRACK
+    %% Column 3: Threat Intelligence
+    subgraph COL3["3. Threat Intelligence Rules"]
+        direction TB
+        DEC_BREACH{"Security Breach?<br/>(Fence Cross / Curfew / Loiter)"}:::decision
+        NORMAL_LIVE["Authorized Activity<br/>Stream Live Feed Only"]:::card
+        ALERT_EVI["Threat Event Triggered<br/>(Priority Score Calculated)"]:::alert
+        EVIDENCE["Forensic Evidence Vault<br/>(HD Snapshot + MP4 Clip)"]:::card
 
-    DEC_SECONDARY{"Secondary Model<br/>Required?"}:::decision
-    TRACK --> DEC_SECONDARY
+        DEC_BREACH -- No --> NORMAL_LIVE
+        DEC_BREACH -- Yes --> ALERT_EVI --> EVIDENCE
+    end
+    class COL3 subg;
 
-    OCR_FACE["Run RetinaFace / ArcFace<br/>& PaddleOCR License Plate"]:::card
-    RULES["Spatial & Temporal Rules Engine<br/>(Polygon Geometry + Dwell Timer)"]:::card
+    %% Column 4: Command Center & Action
+    subgraph COL4["4. Command Center & Response"]
+        direction TB
+        GATEWAY["FastAPI & PostgreSQL Gateway<br/>(Broadcast WebSocket &lt;200ms)"]:::card
+        DASH["React Command Dashboard<br/>(Live Feed Matrix & Audio Alert)"]:::card
+        DEC_OP{"Operator Action?<br/>(Verify Threat)"}:::decision
+        DISPATCH["Escalate & Dispatch Unit<br/>(Quick Response Team QRT)"]:::alert
+        ARCHIVE["Acknowledge & Archive<br/>(Signed Incident Log)"]:::card
 
-    DEC_SECONDARY -- Yes --> OCR_FACE --> RULES
-    DEC_SECONDARY -- No --> RULES
+        GATEWAY --> DASH --> DEC_OP
+        DEC_OP -- Action --> DISPATCH
+        DEC_OP -- Routine --> ARCHIVE
+    end
+    class COL4 subg;
 
-    DEC_BREACH{"Security Breach or Loitering?<br/>• Virtual Fence Crossed<br/>• Dwell Time > 4s<br/>• Night Curfew Movement"}:::decision
-    RULES --> DEC_BREACH
-
-    NORMAL_LIVE["Display Normal Live Feed<br/>to Operator"]:::card
-    ALERT_EVI["Generate Alert & Capture<br/>Evidence Snapshot / Video Clip"]:::alert
-
-    DEC_BREACH -- No --> NORMAL_LIVE
-    DEC_BREACH -- Yes --> ALERT_EVI
-
-    POSTGRES["Store in PostgreSQL<br/>& Broadcast via WebSocket"]:::card
-    DASH["Display on Security<br/>Operator Dashboard"]:::card
-
-    ALERT_EVI --> POSTGRES --> DASH
-
-    DEC_OP{"Operator Action<br/>Required?"}:::decision
-    DASH --> DEC_OP
-
-    DISPATCH["Escalate & Dispatch<br/>Response Team"]:::card
-    ARCHIVE["Acknowledge &<br/>Archive Incident"]:::card
-
-    DEC_OP -- Yes --> DISPATCH
-    DEC_OP -- No --> ARCHIVE
+    %% Cross-Column Interconnections
+    DEC_TARGET == Yes ==> TRACK
+    RULES ==> DEC_BREACH
+    EVIDENCE ==> GATEWAY
 ```
 
 ---
