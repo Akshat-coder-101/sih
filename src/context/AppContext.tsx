@@ -87,6 +87,8 @@ interface AppContextType {
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   switchRoleDemo: (role: 'operator' | 'supervisor' | 'admin') => Promise<void>;
+  startWebcam: () => Promise<void>;
+  stopWebcam: () => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -209,7 +211,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // Initialize Webcam
+  const startWebcam = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: false
+      });
+      setWebcamStream(stream);
+      setWebcamActive(true);
+      setWebcamError(null);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
+    } catch (err: any) {
+      console.warn('Webcam permission error:', err);
+      setWebcamActive(false);
+      setWebcamError(err.message || 'Permission denied');
+      alert('Camera access denied or unavailable. Please enable camera permission in your browser.');
+    }
+  };
+
+  const stopWebcam = () => {
+    if (webcamStream) {
+      webcamStream.getTracks().forEach(t => t.stop());
+    }
+    setWebcamStream(null);
+    setWebcamActive(false);
+  };
+
+  // Auto-request webcam on mount if available
   useEffect(() => {
     let mounted = true;
     async function initCam() {
@@ -226,10 +257,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           videoRef.current.srcObject = stream;
         }
       } catch (err: any) {
-        console.warn('Webcam permission not granted or device offline:', err);
+        console.warn('Webcam auto-start skipped (requires user click):', err);
         if (mounted) {
           setWebcamActive(false);
-          setWebcamError(err.message || 'Permission denied');
+          setWebcamError(err.message || 'Click Start Webcam');
         }
       }
     }
@@ -276,15 +307,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           let detectedWeaponProxy: TrackedWeapon | null = null;
 
           for (const p of predictions) {
-            if (p.score < 0.40) continue;
+            const isPerson = p.class === 'person';
+            const isWeapon = ['knife', 'scissors', 'fork', 'spoon', 'cell phone', 'bottle'].includes(p.class);
+
+            // Lower confidence threshold for weapons (knives) so live webcam detection easily catches blades
+            const minScore = isWeapon ? 0.20 : 0.35;
+            if (p.score < minScore) continue;
+
             const [bx, by, bw, bh] = p.bbox;
             const leftPct = (bx / vw) * 100;
             const topPct = (by / vh) * 100;
             const wPct = (bw / vw) * 100;
             const hPct = (bh / vh) * 100;
-
-            const isPerson = p.class === 'person';
-            const isWeapon = ['knife', 'scissors', 'cell phone'].includes(p.class);
 
             if (isPerson) {
               detectedPerson = { left: leftPct, top: topPct, w: wPct, h: hPct, score: p.score };
@@ -294,7 +328,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
 
             const label = isWeapon
-              ? (p.class === 'knife' ? `WEAPON (KNIFE) ${(p.score).toFixed(2)}` : `OBJECT PROXY (${p.class.toUpperCase()}) ${(p.score).toFixed(2)}`)
+              ? (p.class === 'knife' ? `WEAPON (KNIFE) ${(p.score).toFixed(2)}` : `WEAPON / THREAT (${p.class.toUpperCase()}) ${(p.score).toFixed(2)}`)
               : `${p.class.toUpperCase()} ${(p.score).toFixed(2)}`;
 
             boxes.push({
@@ -399,16 +433,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
           }
 
-          // 3. Threat Proxy Detection
+          // 3. Threat Proxy Detection (Knife / Edged Weapon)
           if (pWeapon) {
             const nowTime = Date.now();
-            if (nowTime - lastWeaponRef.current > 8000 && armed) {
+            if (nowTime - lastWeaponRef.current > 4000 && armed) {
               lastWeaponRef.current = nowTime;
               const snap = captureFrameWithBoxes(video, boxes, osdMeta);
               const isKnife = pWeapon.class === 'knife';
               const detail = isKnife
                 ? 'CRITICAL: Weapon Detected (Blade / Edged Weapon)'
-                : `CRITICAL: Threat Proxy Object (${pWeapon.class.toUpperCase()}) flagged by AI`;
+                : `CRITICAL: Weapon Threat (${pWeapon.class.toUpperCase()}) flagged by AI`;
               const newAlert = mkAlert(
                 'weapon',
                 'cam-1',
@@ -420,6 +454,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               );
               newAlert.sev = 'high';
               addAlert(newAlert);
+
+              // Flash visual alarm across screen
+              setIsFenceBreached(true);
+              setTimeout(() => {
+                setIsFenceBreached(false);
+              }, 3000);
             }
           }
 
@@ -635,7 +675,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleCamNight,
         login,
         logout,
-        switchRoleDemo
+        switchRoleDemo,
+        startWebcam,
+        stopWebcam
       }}
     >
       {children}

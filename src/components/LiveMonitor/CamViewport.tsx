@@ -16,7 +16,8 @@ export const CamViewport: React.FC = () => {
     isFenceBreached,
     openFullscreen,
     triggerWeaponDemo,
-    toggleCamNight
+    toggleCamNight,
+    startWebcam
   } = useApp();
 
   const [simBoxes, setSimBoxes] = useState<any[]>([]);
@@ -165,6 +166,28 @@ export const CamViewport: React.FC = () => {
               className="absolute inset-0 z-0 hidden"
               dangerouslySetInnerHTML={{ __html: getSceneSvg(cam.scene) }}
             />
+          )}
+
+          {/* Webcam Activation Overlay for CAM-01 */}
+          {cam.id === 'cam-1' && !webcamActive && cam.online && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/80 backdrop-blur-[3px] gap-[12px] p-[20px] text-center">
+              <div className="w-[52px] h-[52px] rounded-full bg-cyan-d border border-cyan/30 text-cyan flex items-center justify-center text-[24px] shadow-[0_0_20px_rgba(0,229,184,0.25)]">
+                <i className="ti ti-camera"></i>
+              </div>
+              <div>
+                <div className="text-[14.5px] font-bold text-tx">Enable Webcam for Live AI Detection</div>
+                <div className="text-[11px] text-tx3 max-w-[320px] mt-[4px]">
+                  Click below to activate your laptop/USB camera to test real-time knife, blade, and threat detection.
+                </div>
+              </div>
+              <button
+                onClick={startWebcam}
+                className="px-[16px] py-[8px] rounded-rad2 bg-gradient-to-r from-cyan to-cyan-2 text-black font-bold text-[12px] hover:opacity-95 transition-all flex items-center gap-[6px] shadow-[0_0_15px_rgba(0,229,184,0.35)] cursor-pointer active:scale-95"
+              >
+                <i className="ti ti-video text-[15px]"></i>
+                Start Webcam
+              </button>
+            </div>
           )}
 
           {/* Offline Screen */}
