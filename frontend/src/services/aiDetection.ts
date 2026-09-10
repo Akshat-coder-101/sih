@@ -8,7 +8,7 @@ export async function loadCocoSsdModel(): Promise<cocoSsd.ObjectDetection> {
   if (!modelPromise) {
     modelPromise = (async () => {
       await tf.ready();
-      return await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+      return await cocoSsd.load({ base: 'mobilenet_v2' });
     })();
   }
   return modelPromise;

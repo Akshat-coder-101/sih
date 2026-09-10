@@ -308,10 +308,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           for (const p of predictions) {
             const isPerson = p.class === 'person';
-            const isWeapon = ['knife', 'scissors', 'fork', 'spoon', 'cell phone', 'bottle'].includes(p.class);
+            const isDirectKnife = ['knife', 'scissors', 'fork', 'spoon', 'dagger'].includes(p.class);
+            const isWeaponProxy = ['toothbrush', 'remote', 'cell phone', 'bottle'].includes(p.class);
+            const isWeapon = isDirectKnife || isWeaponProxy;
 
-            // Lower confidence threshold for weapons (knives) so live webcam detection easily catches blades
-            const minScore = isWeapon ? 0.20 : 0.35;
+            // Ultra-sensitive threshold for blades: 0.10 for direct knife/scissors, 0.20 for proxies, 0.35 for person
+            const minScore = isDirectKnife ? 0.10 : (isWeapon ? 0.20 : 0.35);
             if (p.score < minScore) continue;
 
             const [bx, by, bw, bh] = p.bbox;
@@ -328,7 +330,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
 
             const label = isWeapon
-              ? (p.class === 'knife' ? `WEAPON (KNIFE) ${(p.score).toFixed(2)}` : `WEAPON / THREAT (${p.class.toUpperCase()}) ${(p.score).toFixed(2)}`)
+              ? (isDirectKnife ? `WEAPON (KNIFE) ${(p.score).toFixed(2)}` : `WEAPON / PROXY (${p.class.toUpperCase()}) ${(p.score).toFixed(2)}`)
               : `${p.class.toUpperCase()} ${(p.score).toFixed(2)}`;
 
             boxes.push({
@@ -339,7 +341,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               label,
               watch: isWeapon,
               score: p.score,
-              class: p.class
+              class: isWeapon ? 'weapon' : p.class
             });
           }
 
@@ -364,8 +366,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const pPerson = detectedPerson;
           const pWeapon = detectedWeaponProxy;
 
-          // 1. Virtual Fence Crossing Check (Y >= 72%)
-          if (pPerson) {
+          // 1. Threat Detection (Knife / Edged Weapon) — HIGHEST PRIORITY
+          if (pWeapon) {
+            const nowTime = Date.now();
+            if (nowTime - lastWeaponRef.current > 3500 && armed) {
+              lastWeaponRef.current = nowTime;
+              const snap = captureFrameWithBoxes(video, boxes, osdMeta);
+              const isKnife = ['knife', 'scissors', 'fork', 'spoon'].includes(pWeapon.class);
+              const detail = isKnife
+                ? 'CRITICAL: Weapon Detected (Blade / Edged Weapon)'
+                : `CRITICAL: Weapon Threat (${pWeapon.class.toUpperCase()}) flagged by AI`;
+              const newAlert = mkAlert(
+                'weapon',
+                'cam-1',
+                0,
+                detail,
+                false,
+                snap,
+                Math.round(pWeapon.score * 100)
+              );
+              newAlert.sev = 'high';
+              addAlert(newAlert);
+
+              // Immediate screen flash
+              setIsFenceBreached(true);
+              setTimeout(() => {
+                setIsFenceBreached(false);
+              }, 3500);
+            }
+          }
+          // 2. Virtual Fence Crossing Check (Only triggers if NO weapon is detected)
+          else if (pPerson) {
             const bottomY = pPerson.top + pPerson.h;
             if (bottomY >= 72) {
               setIsFenceBreached(true);
@@ -390,7 +421,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               }
             }
 
-            // 2. Stationary Loitering Check (> 4 seconds)
+            // 3. Stationary Loitering Check (> 4 seconds)
             const cx = pPerson.left + pPerson.w / 2;
             const cy = pPerson.top + pPerson.h / 2;
             const lt = loiterTrackerRef.current;
@@ -430,36 +461,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (loiterTrackerRef.current.firstSeen && Date.now() - (loiterTrackerRef.current.lastSeen || 0) > 2000) {
               loiterTrackerRef.current.firstSeen = null;
               loiterTrackerRef.current.alerted = false;
-            }
-          }
-
-          // 3. Threat Proxy Detection (Knife / Edged Weapon)
-          if (pWeapon) {
-            const nowTime = Date.now();
-            if (nowTime - lastWeaponRef.current > 4000 && armed) {
-              lastWeaponRef.current = nowTime;
-              const snap = captureFrameWithBoxes(video, boxes, osdMeta);
-              const isKnife = pWeapon.class === 'knife';
-              const detail = isKnife
-                ? 'CRITICAL: Weapon Detected (Blade / Edged Weapon)'
-                : `CRITICAL: Weapon Threat (${pWeapon.class.toUpperCase()}) flagged by AI`;
-              const newAlert = mkAlert(
-                'weapon',
-                'cam-1',
-                0,
-                detail,
-                false,
-                snap,
-                Math.round(pWeapon.score * 100)
-              );
-              newAlert.sev = 'high';
-              addAlert(newAlert);
-
-              // Flash visual alarm across screen
-              setIsFenceBreached(true);
-              setTimeout(() => {
-                setIsFenceBreached(false);
-              }, 3000);
             }
           }
 
