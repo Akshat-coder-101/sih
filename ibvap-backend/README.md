@@ -1,72 +1,119 @@
-# IBVAP Backend (Phase 1 + Phase 4 of the Antigravity build plan)
+# IBVAP — Backend Microservice
 
-A working FastAPI backend for the IBVAP dashboard covering: real persistence,
-JWT auth + RBAC, encryption at rest, a WebSocket alert feed, an audit log,
-and the SHA-256 hash-chain tamper-evidence ledger (FR-9 and FR-10 from the
-PRD). Video ingestion, YOLOv8 detection, ANPR, and face-watchlist matching
-(Phase 2/3) are **not** in this drop — see "What's not here" below.
+The **IBVAP Backend** is a high-performance Python FastAPI service providing real-time video stream generation, neural network object detection, automated perimeter rule evaluation, cryptographic tamper-evident audit ledgers, and AES-256-GCM data encryption at rest.
 
-## Run it
+---
 
+## 🏗️ Architecture & Modules
+
+```
+ibvap-backend/
+├── app/
+│   ├── main.py          # FastAPI application, route handlers, and WebSocket manager
+│   ├── video_stream.py  # MJPEG camera video generator & tactical OpenCV HUD overlays
+│   ├── yolo_detector.py # YOLOv8 ONNX object detection module (80 classes, including knife)
+│   ├── rule_engine.py   # Event processor (tripwire, dwell time, watchlist, ANPR, C2 dispatch)
+│   ├── ledger.py        # SHA-256 cryptographic hash-chain ledger
+│   ├── security.py      # AES-256-GCM encryption, JWT authentication, PBKDF2 hashing & RBAC
+│   ├── models.py        # SQLAlchemy database models (Camera, Alert, User, AuditLog, Ledger)
+│   ├── schemas.py       # Pydantic v2 schemas with camelCase automatic serialization
+│   ├── seed.py          # Initial database seed (cameras, demo accounts, alerts)
+│   ├── ws_manager.py    # WebSocket connection manager and broadcast bus
+│   └── database.py      # SQLite database engine and session factory
+├── .env.example         # Template for environment configuration
+└── requirements.txt     # Python dependencies
+```
+
+---
+
+## 🚀 Getting Started
+
+### 1. Installation
 ```bash
 cd ibvap-backend
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
 ```
 
-On first run it creates `ibvap.db` (SQLite), generates an AES-256 key at
-`.aes_key`, and seeds the same cameras/alerts your frontend was faking in
-`AppContext.tsx`, plus three demo accounts (**change these before any real
-deployment**):
+### 2. Run the Development Server
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
 
-| role | username | password |
-|---|---|---|
-| admin | admin | admin123 |
-| supervisor | supervisor | supervisor123 |
-| operator | operator | operator123 |
+On first startup, the service automatically:
+1. Creates the SQLite database (`ibvap.db`).
+2. Generates an AES-256 cryptographic key at `.aes_key`.
+3. Seeds initial cameras, alerts, and demo users.
+4. Starts the background rule engine worker.
 
-Interactive API docs: `http://localhost:8000/docs`
+- **API Base URL:** `http://localhost:8000`
+- **Interactive Swagger Documentation:** `http://localhost:8000/docs`
+- **ReDoc:** `http://localhost:8000/redoc`
 
-## Endpoint map
+---
 
-| Method | Path | Role | Notes |
-|---|---|---|---|
-| POST | `/auth/login` | — | returns JWT; locks account after 5 bad attempts (FR-9.5) |
-| GET | `/cameras` | operator+ | |
-| PATCH | `/cameras/{id}/toggle` | admin | |
-| GET | `/alerts?type=&sev=&camId=&reviewed=` | operator+ | matches `AlertsLog.tsx` filters exactly |
-| POST | `/alerts` | operator+ | writes DB row → appends to ledger → broadcasts over WS, in one request |
-| PATCH | `/alerts/{id}/reviewed` | supervisor+ | |
-| GET | `/ledger/verify` | operator+ | powers the "Verify Log Integrity" button (FR-8.6) |
-| POST | `/ledger/tamper-demo/{alertId}` | admin | **demo-only**, edits a record bypassing the ledger so you can show Verify flip from intact→broken live |
-| GET | `/audit-log` | supervisor+ | separate from the AI alert log, per FR-9.4 |
-| WS | `/ws/alerts?token=...` | — | pushes `{event:"new_alert", data:{...}}` the instant an alert is created |
+## 👥 Demo User Accounts (RBAC)
 
-Every response uses **camelCase** field names (`camId`, `trackId`, `ts`,
-`accessToken`, etc.) matching your existing `Camera`/`Alert` TypeScript
-interfaces in `index.ts`, so the frontend swap is mostly "point fetch calls
-here" rather than restructuring components.
+| Role | Username | Password | Permissions |
+| :--- | :--- | :--- | :--- |
+| **Admin** | `admin` | `admin123` | Full control: toggle cameras, configure streams, run tamper demo, manage users. |
+| **Supervisor** | `supervisor` | `supervisor123` | Acknowledge & review alerts, export CSV reports, view analytics and audit logs. |
+| **Operator** | `operator` | `operator123` | Monitor live streams, view alerts, toggle night vision mode. |
 
-## What's real vs. what this doesn't do
+---
 
-**Real:**
-- Alerts and cameras persist in an actual database, survive restarts.
-- `detail` and `snapshot` fields are AES-256-GCM encrypted at rest (FR-9.3) — you can `sqlite3 ibvap.db "select detail_enc from alerts limit 1;"` and see ciphertext, not plaintext.
-- Passwords are hashed (pbkdf2_sha256), JWTs expire in 8h, RBAC is enforced server-side (tested: operator gets a real 403 hitting an admin route, not just a hidden UI button).
-- The hash-chain ledger is genuinely recomputed from live DB rows on every `/ledger/verify` call — tested end-to-end above: seed data verifies intact, a live-created alert keeps it intact, and the `tamper-demo` endpoint (admin-only) breaks it at the exact record, which `/ledger/verify` correctly detects and reports.
-- WebSocket broadcast tested: an alert posted via `/alerts` arrives on a connected `/ws/alerts` client in well under a second.
+## 📡 API Endpoint Reference
 
-**Not real / not built (this is exactly Phase 2 and Phase 3 from the build plan):**
-- No RTSP/video-file ingestion — there's nowhere yet for CAM-02/03/04 to get real frames from.
-- No YOLOv8, no ByteTrack, no server-side inference at all. The frontend's client-side TF.js COCO-SSD loop for CAM-01's webcam is untouched by this backend and can keep running as-is, or you can point it at `POST /alerts` to persist its detections instead of calling `setAlerts` locally.
-- No ANPR, no face/watchlist matching. The `anpr`/`watchlist` alert *types* are supported end-to-end (DB, ledger, encryption, RBAC) — you just don't have a model producing them yet. Post to `/alerts` with `type: "anpr"` and real plate text in `detail` once that model exists, and everything downstream (encryption, ledger, WS push, filtering, CSV export) already works.
-- No TLS/SRTP wiring in this dev run (`uvicorn --reload` is plaintext HTTP). For the demo, put it behind an nginx reverse proxy with a self-signed cert to satisfy FR-9.1, or run `uvicorn --ssl-keyfile ... --ssl-certfile ...` directly.
+All endpoints return JSON keys formatted in **camelCase** for seamless frontend integration.
 
-## Wiring it into the existing React app
+### Authentication & Users
+| Method | Path | Auth | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/auth/login` | None | Authenticates user; locks account for 15 mins after 5 failed attempts. |
+| `GET` | `/auth/me` | Bearer Token | Returns user profile and current role. |
 
-In `AppContext.tsx`:
-1. Replace the `INITIAL_CAMS`/`INITIAL_ALERTS` constants with a `fetch('/cameras')` / `fetch('/alerts')` call on mount, storing the JWT (from a new login screen) in memory or `sessionStorage`.
-2. Replace the 12-second `setInterval` random-alert generator with a `new WebSocket('ws://.../ws/alerts')` subscription that calls the existing `addAlert()` — no other component needs to change, since `addAlert` is already threaded through the whole app.
-3. Replace `markReviewed`'s local `setAlerts` call with `PATCH /alerts/:id/reviewed`, then update local state from the response (or just let the next WS/poll refresh handle it).
-4. Replace `toggleCamOnline`'s local `setCams` call with `PATCH /cameras/:id/toggle`.
-5. Add the "Verify Log Integrity" button to `AlertsLog.tsx` next to "Export CSV", calling `GET /ledger/verify` and showing the result.
+### Cameras & Video Streams
+| Method | Path | Auth | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/cameras` | Operator+ | Returns list of registered cameras and telemetry. |
+| `GET` | `/cameras/{cam_id}/stream` | None | Real-time MJPEG multipart stream (`multipart/x-mixed-replace; boundary=frame`). |
+| `PATCH` | `/cameras/{cam_id}/toggle` | Admin | Toggles camera online/offline state. |
+| `PATCH` | `/cameras/{cam_id}/night` | Operator+ | Toggles IR night mode and enhances low-light contrast. |
+
+### Alerts & Incidents
+| Method | Path | Auth | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/alerts` | Operator+ | Returns filtered alerts (`type`, `sev`, `camId`, `reviewed`). Plaintext AES decrypted on read. |
+| `POST` | `/alerts` | Operator+ | Creates alert, encrypts snapshot with AES-256-GCM, appends to hash ledger, and pushes to WebSocket. |
+| `PATCH` | `/alerts/{id}/reviewed` | Supervisor+ | Marks an alert as acknowledged and reviewed. |
+
+### Cryptographic Ledger (Tamper Evidence)
+| Method | Path | Auth | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/ledger/verify` | Operator+ | Recalculates full SHA-256 hash-chain to verify database integrity. |
+| `POST` | `/ledger/tamper-demo/{id}` | Admin | **Demo endpoint:** Directly modifies a record in the database bypassing the ledger to prove live tamper detection. |
+
+### Human Audit Log (FR-9.4)
+| Method | Path | Auth | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/audit-log` | Supervisor+ | Returns records of administrative and operator actions. |
+| `GET` | `/audit-log/export-csv` | Supervisor+ | Downloads audit log as a CSV file. |
+
+### Real-Time WebSocket Feed
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `WS` | `/ws/alerts` | Broadcasts real-time events (`new_alert`) to connected browser clients. |
+
+---
+
+## 🔒 Security Architecture
+
+1. **AES-256-GCM Encryption:**
+   - Forensic snapshots (`snapshot_enc`) and incident details (`detail_enc`) are encrypted at rest using AES-256-GCM before writing to the database.
+   - Plaintext evidence never touches disk unencrypted.
+2. **SHA-256 Tamper-Evident Ledger:**
+   - Every alert is cryptographically linked to the previous record hash:
+     $$\text{Hash}_n = \text{SHA-256}(\text{Hash}_{n-1} + \text{alert\_id} + \text{cam\_id} + \text{type} + \text{sev} + \text{ts})$$
+   - Any unauthorized modification breaks the hash chain and is immediately flagged by `/ledger/verify`.
+3. **Password Security:**
+   - Salted and hashed using PBKDF2-SHA256.
+   - Brute-force lockout enforces a 15-minute lock after 5 consecutive bad login attempts.

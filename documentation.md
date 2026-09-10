@@ -105,26 +105,136 @@ The user interface is divided into clean, focused operational modules:
 
 ---
 
-## 5. Backend Services Architecture
+## 5. Backend Services & API Documentation
 
-The backend (`ibvap-backend`) is built with **FastAPI**, **SQLAlchemy**, and **OpenCV**:
+The backend service (`ibvap-backend`) is built with **FastAPI**, **SQLAlchemy ORM**, **OpenCV**, and **PyCryptodome**, providing production-grade persistence, real-time video streaming, neural network inference, and cryptographic verification.
 
 ```
 ibvap-backend/
 ├── app/
-│   ├── main.py          # REST API endpoints & WebSocket broadcaster
-│   ├── video_stream.py  # MJPEG camera stream simulator (OpenCV)
+│   ├── main.py          # FastAPI application, routing, and WebSocket manager
+│   ├── video_stream.py  # MJPEG camera stream simulator & tactical HUD overlay
 │   ├── yolo_detector.py # YOLOv8 ONNX object detection module
-│   ├── rule_engine.py   # Event processor (tripwire, loiter, watchlist, ANPR)
+│   ├── rule_engine.py   # Event processor (tripwire, loiter, watchlist, ANPR, C2 dispatch)
 │   ├── ledger.py        # SHA-256 cryptographic hash-chain ledger
-│   ├── security.py      # AES-256-GCM encryption & JWT authentication
-│   ├── models.py        # Database models (Camera, Alert, User, Ledger)
-│   └── schemas.py       # Pydantic data validation schemas
+│   ├── security.py      # AES-256-GCM encryption, JWT authentication, & RBAC
+│   ├── models.py        # SQLAlchemy database models
+│   ├── schemas.py       # Pydantic v2 data validation schemas (camelCase conversion)
+│   ├── seed.py          # Initial database seed (cameras, demo users, alerts)
+│   ├── ws_manager.py    # WebSocket connection pool and broadcaster
+│   └── database.py      # SQLite / SQLAlchemy engine and session factory
+├── .env.example         # Template for environment configuration
+└── requirements.txt     # Python dependencies
 ```
 
-* **`main.py`**: Handles user authentication, camera listings, alert management, and live WebSocket subscriptions.
-* **`ledger.py`**: Calculates cumulative SHA-256 hashes linking each new alert to the previous alert, creating an immutable audit trail.
-* **`security.py`**: Encrypts sensitive fields (alert details and JPEG snapshots) using AES-256 in Galois/Counter Mode (GCM).
+---
+
+### A. REST API Endpoints
+
+All responses automatically format keys in **camelCase** to match frontend TypeScript interfaces.
+
+#### 1. Authentication & Users
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/auth/login` | Public | Validates credentials, checks account lockout (max 5 attempts), returns 8h JWT token. |
+| `GET` | `/auth/me` | Authenticated | Returns username and active RBAC role (`operator`, `supervisor`, `admin`). |
+
+#### 2. Camera Management & Video Streaming
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/cameras` | Operator+ | Lists all registered camera nodes with online status, GPS anchors, and FPS telemetry. |
+| `GET` | `/cameras/{cam_id}/stream` | Public | Live MJPEG multipart video stream (`multipart/x-mixed-replace; boundary=frame`) for NVR displays. |
+| `PATCH` | `/cameras/{cam_id}/toggle` | Admin | Toggles camera online/offline state and logs an action to the audit ledger. |
+| `PATCH` | `/cameras/{cam_id}/night` | Operator+ | Toggles infrared night-vision mode and applies synthetic IR color grading in real time. |
+
+#### 3. Alerts & Incident Management
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/alerts` | Operator+ | Queries alerts with query filters: `type`, `sev`, `camId`, `reviewed`. Decrypts AES fields on read. |
+| `POST` | `/alerts` | Operator+ | Creates a new security alert: encrypts snapshot with AES-256, appends to hash ledger, and broadcasts to WebSocket clients. |
+| `PATCH` | `/alerts/{id}/reviewed` | Supervisor+ | Marks an alert as acknowledged and reviewed with audit trail entry. |
+
+#### 4. Tamper-Evident Ledger
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/ledger/verify` | Operator+ | Recomputes and verifies the entire SHA-256 hash-chain to prove zero records were modified. |
+| `POST` | `/ledger/tamper-demo/{id}` | Admin | *Demo endpoint:* Intentionally modifies a record bypassing the ledger to demonstrate live tamper detection. |
+
+#### 5. Human Audit Logs (FR-9.4)
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/audit-log` | Supervisor+ | Returns records of human operator actions (logins, exports, camera state toggles). |
+| `GET` | `/audit-log/export-csv` | Supervisor+ | Exports the audit log to CSV for compliance inspection. |
+
+---
+
+### B. Real-Time WebSockets (`/ws/alerts`)
+
+- **Protocol:** `ws://localhost:8000/ws/alerts`
+- When any alert is created (via AI detection, background rule engine, or manual creation), the server immediately broadcasts JSON:
+```json
+{
+  "event": "new_alert",
+  "data": {
+    "id": "EVT-0015",
+    "type": "weapon",
+    "sev": "high",
+    "camId": "cam-1",
+    "camName": "CAM-01 · North Perimeter",
+    "location": "BOP Alpha — North Fence Line",
+    "confidence": 96,
+    "trackId": "#184",
+    "detail": "CRITICAL: Weapon Detected (Blade / Edged Weapon)",
+    "reviewed": false,
+    "ts": "2026-09-10T10:45:00Z",
+    "snapshot": "data:image/jpeg;base64,..."
+  }
+}
+```
+
+---
+
+### C. Video Streaming & Computer Vision (`video_stream.py`)
+
+- **MJPEG Generator:** Generates high-efficiency multipart JPEG frames at ~12 FPS for CAM-02, CAM-03, and CAM-04.
+- **Procedural Tactical Scenes:**
+  - `fence`: Barbed wire fence posts with dynamic patrolling officers and virtual fence boundaries.
+  - `gate`: Border checkpoint booth with barrier poles and animated vehicles displaying license plates.
+  - `night`: Infrared night-vision filter with synthetic IR sensor noise and high-contrast thermal silhouettes.
+- **HUD Reticles & OSD Overlays:** OpenCV overlays timestamps, camera IDs, GPS coordinates, and corner targeting reticles onto every frame.
+
+---
+
+### D. Automated Rule Engine (`rule_engine.py`)
+
+Runs as an asynchronous background worker continuously evaluating incoming telemetry:
+1. **Virtual Fence Crossing:** Flags any entity crossing the boundary line at 72% depth.
+2. **Loiter Dwell Time:** Measures how long an object remains within a 15% radius; triggers a loiter warning if $\ge 4$ seconds.
+3. **ANPR Hotlist Matching:** Compares detected number plates (e.g. `PB-11-AK-4471`) against flagged vehicle lists.
+4. **Watchlist Matching:** Cross-references facial embeddings against surveillance profiles (e.g. `WL-009`, `WL-014`).
+5. **C2 Relay Webhook:** Automatically dispatches high-severity alerts to external military Command & Control systems.
+
+---
+
+### E. Cryptographic Ledger (`ledger.py`)
+
+IBVAP implements an immutable, blockchain-style hash chain:
+- **Hashing Formula:**
+  $$\text{Record Hash}_n = \text{SHA-256}(\text{Record Hash}_{n-1} + \text{alert\_id} + \text{cam\_id} + \text{type} + \text{sev} + \text{ts})$$
+- If any attacker modifies a past alert directly in the database (e.g., altering a timestamp or changing severity), the hash chain breaks from that record forward.
+- The `/ledger/verify` endpoint recalculates all hashes from genesis to head, pinpointing the exact compromised record if tampering occurs.
+
+---
+
+### F. Encryption & Security (`security.py`)
+
+- **Field-Level Encryption at Rest (AES-256-GCM):**
+  - Incident details and JPEG snapshots are encrypted using AES-256 in Galois/Counter Mode before being saved to disk.
+  - Encryption key is stored securely in `.aes_key` (generated with `os.urandom(32)`).
+  - Plaintext data is never written to disk unencrypted.
+- **Password Security:** Passwords are salted and hashed with **PBKDF2-SHA256**.
+- **Brute-Force Lockout (FR-9.5):** After 5 consecutive failed login attempts, the account is locked for 15 minutes.
+
 
 ---
 
