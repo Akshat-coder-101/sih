@@ -350,7 +350,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ### 2. Start the Frontend Command Center (React + Vite)
 ```bash
-# In the project root
+cd frontend
 npm install
 npm run dev
 ```

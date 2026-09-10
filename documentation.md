@@ -266,7 +266,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ### Running the Frontend
 ```bash
-# In the project root
+cd frontend
 npm install
 npm run dev
 ```
