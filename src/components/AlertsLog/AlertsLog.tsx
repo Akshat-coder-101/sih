@@ -97,7 +97,7 @@ export const AlertsLog: React.FC = () => {
       <div className="flex items-center justify-between mb-[22px] flex-wrap gap-[10px]">
         <div>
           <div className="text-[18px] font-[800] tracking-[-0.4px] text-tx">Alerts Log</div>
-          <div className="text-[11.5px] text-tx3 mt-[1px]">Full tactical event history with forensic evidence metadata</div>
+          <div className="text-[11.5px] text-tx3 mt-[1px]">Tactical event history and forensic verification</div>
         </div>
         
         <div className="flex items-center gap-[8px]">
@@ -105,7 +105,7 @@ export const AlertsLog: React.FC = () => {
           <button
             onClick={handleVerifyIntegrity}
             className="flex items-center gap-[6px] px-[14px] py-[7px] rounded-rad2 bg-cyan-dd border border-cyan/40 text-cyan hover:bg-cyan-d/50 font-[700] text-[12px] shadow-[0_0_12px_rgba(0,229,184,0.15)] transition-all"
-            title="Walk the SHA-256 hash-chain ledger to verify no historical records have been altered"
+            title="Verify ledger integrity"
           >
             <i className="ti ti-shield-lock text-[14px]"></i>
             Verify Log Integrity
@@ -120,7 +120,7 @@ export const AlertsLog: React.FC = () => {
                 ? 'bg-gradient-to-br from-cyan to-cyan-2 text-black shadow-[0_0_15px_rgba(0,229,184,0.3)] hover:opacity-90 cursor-pointer'
                 : 'bg-s3 text-tx4 border border-b1 cursor-not-allowed opacity-60'
             }`}
-            title={canExport ? 'Export filtered records to CSV' : 'Supervisor or Admin role required to export'}
+            title={canExport ? 'Export CSV' : 'Supervisor/Admin role required'}
           >
             <i className="ti ti-download text-[14px]"></i>
             Export CSV

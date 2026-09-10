@@ -10,11 +10,27 @@
 
 The architecture converts raw, unmanaged RTSP CCTV video feeds into prioritized, contextualized, and actionable security alerts using a high-throughput cascaded AI pipeline, spatial-temporal rules engine, and an automated chain-of-custody evidence vault.
 
+> 📖 **Full System Documentation:** See [documentation.md](documentation.md) for an in-depth walkthrough of all website components, AI modules, and operational workflows.
+
+---
+
+## 🔪 Weapon & Knife Threat Detection
+
+- **Real-Time Client-Side Inference:** On `CAM-01`, **TensorFlow.js COCO-SSD** runs directly in the browser over local webcam video frames. When a knife or blade is presented, the model immediately draws a targeted red bounding box, alerts the operator, and captures an encrypted snapshot.
+- **Backend YOLOv8 Engine:** Server-side processing supports **YOLOv8 ONNX** with class `knife` for automated CCTV stream monitoring.
+- **Presentation Shortcut:** Press the **`K`** key on any page to immediately trigger a live simulated weapon threat alert.
+
+---
+
+## 🔒 Forensic Security & Tamper-Evident Ledger
+
+- **AES-256-GCM Encryption:** High-resolution snapshots and incident details are encrypted at rest using AES-256-GCM before writing to the database.
+- **SHA-256 Hash-Chain Ledger:** Every security event is cryptographically linked to the previous event hash, providing an immutable audit trail.
+- **Log Integrity Verification:** Operators and supervisors can click **"Verify Log Integrity"** in the Alerts Log to cryptographically audit the entire incident database.
+
 ---
 
 ## 📊 System Design & Decision Flowchart (Presentation Style)
-
-![System Design Flowchart](flowchart_decision_tree_ppt.png)
 
 ### Algorithmic Decision Tree (Mermaid Architecture)
 
@@ -320,6 +336,27 @@ Instead of running heavy face-recognition and license-plate OCR continuously on 
 
 ### 4. Zero-Friction Integration with Existing Security Infrastructure
 - Works on standard RTSP and ONVIF protocols compatible with existing CP PLUS, Hikvision, Dahua, and Honeywell CCTV setups already deployed at border outposts and government facilities.
+
+---
+
+## 🚀 Quick Start Guide
+
+### 1. Start the Backend API (FastAPI)
+```bash
+cd ibvap-backend
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### 2. Start the Frontend Command Center (React + Vite)
+```bash
+# In the project root
+npm install
+npm run dev
+```
+
+- **Frontend Dashboard:** `http://localhost:3000` (or `http://localhost:5173`)
+- **Backend Swagger Docs:** `http://localhost:8000/docs`
 
 ---
 

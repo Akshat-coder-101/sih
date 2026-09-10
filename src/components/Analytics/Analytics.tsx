@@ -10,10 +10,10 @@ export const Analytics: React.FC = () => {
   const onlineCamsCount = cams.filter(c => c.online).length;
 
   const kpis = [
-    { cls: 'border-t-cyan', valCls: 'text-cyan', label: 'Cameras Online', val: `${onlineCamsCount}/${cams.length}`, sub: '1 offline — coverage gap flagged', icon: 'ti-video' },
+    { cls: 'border-t-cyan', valCls: 'text-cyan', label: 'Cameras Online', val: `${onlineCamsCount}/${cams.length}`, sub: cams.length - onlineCamsCount > 0 ? `${cams.length - onlineCamsCount} offline` : 'All cameras operational', icon: 'ti-video' },
     { cls: 'border-t-red', valCls: 'text-red', label: 'Alerts Today', val: `${alerts.length}`, sub: `${criticalCount} critical events`, icon: 'ti-alert-triangle' },
-    { cls: 'border-t-blue', valCls: 'text-blue', label: 'Watchlist Hits', val: `${watchlistCount}`, sub: 'Authorized watchlist matching', icon: 'ti-fingerprint' },
-    { cls: 'border-t-amber', valCls: 'text-amber', label: 'Avg AI Latency', val: '~14ms', sub: 'Client-side inference', icon: 'ti-bolt' },
+    { cls: 'border-t-blue', valCls: 'text-blue', label: 'Watchlist Hits', val: `${watchlistCount}`, sub: 'Active watchlist matching', icon: 'ti-fingerprint' },
+    { cls: 'border-t-amber', valCls: 'text-amber', label: 'Avg AI Latency', val: '~14ms', sub: 'Real-time edge inference', icon: 'ti-bolt' },
   ];
 
   const types = Object.keys(TYPE_META);

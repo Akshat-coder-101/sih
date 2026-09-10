@@ -66,7 +66,7 @@ export const AiPipeline: React.FC = () => {
       <div className="flex items-center justify-between mb-[22px]">
         <div>
           <div className="text-[18px] font-[800] tracking-[-0.4px] text-tx">AI Inference Pipeline</div>
-          <div className="text-[11.5px] text-tx3 mt-[1px]">Cascaded model stack — cheap detector first, expensive models only on trigger</div>
+          <div className="text-[11.5px] text-tx3 mt-[1px]">Cascaded AI pipeline — continuous edge detection with on-demand forensic models</div>
         </div>
       </div>
 
