@@ -2,8 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 
 export const Topbar: React.FC = () => {
-  const { currentPage, cams, alerts, armed, toggleArmed, triggerWeaponDemo } = useApp();
+  const {
+    currentPage,
+    cams,
+    alerts,
+    armed,
+    toggleArmed,
+    triggerWeaponDemo,
+    currentUser,
+    switchRoleDemo,
+    backendConnected
+  } = useApp();
   const [timeStr, setTimeStr] = useState<string>('--:--:--');
+  const [roleSwitching, setRoleSwitching] = useState<boolean>(false);
 
   useEffect(() => {
     const tick = () => {
@@ -26,6 +37,17 @@ export const Topbar: React.FC = () => {
 
   const onlineCamsCount = cams.filter(c => c.online).length;
   const watchlistCount = alerts.filter(a => a.type === 'watchlist').length;
+
+  const handleRoleChange = async (newRole: 'operator' | 'supervisor' | 'admin') => {
+    setRoleSwitching(true);
+    try {
+      await switchRoleDemo(newRole);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setRoleSwitching(false);
+    }
+  };
 
   return (
     <header className="h-[52px] shrink-0 bg-s1 border-b border-b1 flex items-center px-[20px] gap-[8px] select-none z-10">
@@ -50,19 +72,19 @@ export const Topbar: React.FC = () => {
       <div className="flex items-center gap-[6px] px-[10px] py-[4px] rounded-rad3 bg-s2 border border-b1">
         <i className="ti ti-video text-[13px] text-cyan"></i>
         <span className="text-[12px] font-[700] text-tx font-mono">{onlineCamsCount}/{cams.length}</span>
-        <span className="text-[10px] text-tx3">cams online</span>
+        <span className="text-[10px] text-tx3">cams</span>
       </div>
 
       <div className="flex items-center gap-[6px] px-[10px] py-[4px] rounded-rad3 bg-s2 border border-b1">
         <i className="ti ti-alert-triangle text-[13px] text-red"></i>
         <span className="text-[12px] font-[700] text-tx font-mono">{alerts.length}</span>
-        <span className="text-[10px] text-tx3">alerts today</span>
+        <span className="text-[10px] text-tx3">alerts</span>
       </div>
 
       <div className="flex items-center gap-[6px] px-[10px] py-[4px] rounded-rad3 bg-s2 border border-b1">
         <i className="ti ti-fingerprint text-[13px] text-blue"></i>
         <span className="text-[12px] font-[700] text-tx font-mono">{watchlistCount}</span>
-        <span className="text-[10px] text-tx3">watchlist hits</span>
+        <span className="text-[10px] text-tx3">watchlist</span>
       </div>
 
       <div className="w-[1px] h-[22px] bg-b1 mx-[4px]" />
@@ -94,6 +116,29 @@ export const Topbar: React.FC = () => {
 
       <div className="w-[1px] h-[22px] bg-b1 mx-[4px]" />
 
+      {/* RBAC Role Switcher (FR-9.2 for live demonstration) */}
+      <div className="flex items-center gap-[4px] bg-s2 border border-b1 p-[2px] rounded-rad3">
+        <span className="text-[9px] text-tx4 uppercase font-mono px-[6px] font-bold">ROLE</span>
+        {(['operator', 'supervisor', 'admin'] as const).map(role => (
+          <button
+            key={role}
+            onClick={() => handleRoleChange(role)}
+            disabled={roleSwitching}
+            className={`px-[8px] py-[3px] rounded-rad3 text-[10px] font-bold capitalize transition-all ${
+              currentUser?.role === role
+                ? role === 'admin'
+                  ? 'bg-red text-black shadow-[0_0_10px_rgba(255,107,107,0.4)]'
+                  : role === 'supervisor'
+                  ? 'bg-amber text-black shadow-[0_0_10px_rgba(255,167,38,0.4)]'
+                  : 'bg-cyan text-black shadow-[0_0_10px_rgba(0,229,184,0.4)]'
+                : 'text-tx3 hover:text-tx'
+            }`}
+          >
+            {role}
+          </button>
+        ))}
+      </div>
+
       {/* Fullscreen Button */}
       <button
         onClick={() => {
@@ -103,7 +148,7 @@ export const Topbar: React.FC = () => {
             document.exitFullscreen();
           }
         }}
-        className="w-[32px] h-[32px] rounded-rad2 border border-b1 bg-transparent hover:bg-s2 text-tx3 hover:text-tx flex items-center justify-center text-[15px] transition-colors duration-150"
+        className="w-[32px] h-[32px] rounded-rad2 border border-b1 bg-transparent hover:bg-s2 text-tx3 hover:text-tx flex items-center justify-center text-[15px] transition-colors duration-150 ml-[2px]"
         title="Fullscreen"
       >
         <i className="ti ti-maximize"></i>

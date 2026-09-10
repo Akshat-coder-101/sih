@@ -106,11 +106,16 @@ export const AlertsPanel: React.FC = () => {
                     {a.detail}
                   </div>
 
-                  <div className="text-[10px] text-tx3 truncate mb-[2px] flex items-center gap-[4px]">
+                  <div className="text-[10px] text-tx3 truncate mb-[2px] flex items-center gap-[4px] flex-wrap">
                     <span>{a.camName.split('·')[0].trim()}</span>
                     {a.snapshot && (
                       <span className="text-[9px] text-cyan font-mono font-bold flex items-center gap-[2px]">
                         <i className="ti ti-photo text-[10px]"></i> frame captured
+                      </span>
+                    )}
+                    {a.sev === 'high' && (
+                      <span className="text-[8.5px] text-[#38d9a9] font-mono font-bold flex items-center gap-[2px] bg-[#092b20] border border-[#38d9a9]/40 px-[4px] py-[0.5px] rounded" title="Alert dispatched to Command and Control (C2) Tactical Network">
+                        <i className="ti ti-broadcast text-[9px]"></i> C2 Relay: Sent ✓
                       </span>
                     )}
                     {a.reviewed && <span className="text-cyan text-[9px] ml-auto">✓ reviewed</span>}

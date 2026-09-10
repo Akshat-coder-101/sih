@@ -3,17 +3,18 @@ import { useApp } from '../context/AppContext';
 import { PageId } from '../types';
 
 export const Sidebar: React.FC = () => {
-  const { currentPage, goToPage, alerts, armed } = useApp();
+  const { currentPage, goToPage, alerts, armed, currentUser, backendConnected } = useApp();
 
   const criticalCount = alerts.filter(a => a.sev === 'high' && !a.reviewed).length;
+  const isAdmin = currentUser?.role === 'admin';
 
-  const navItems: { id: PageId; label: string; icon: string; group?: string; badge?: number }[] = [
+  const navItems: { id: PageId; label: string; icon: string; group?: string; badge?: number; adminOnly?: boolean }[] = [
     { id: 'monitor', label: 'Live Monitor', icon: 'ti-layout-dashboard', group: 'Surveillance' },
     { id: 'camgrid', label: 'Camera Grid', icon: 'ti-grid-dots' },
     { id: 'alerts', label: 'Alerts Log', icon: 'ti-alert-triangle', group: 'Intelligence', badge: criticalCount },
     { id: 'analytics', label: 'Analytics', icon: 'ti-chart-donut' },
     { id: 'models', label: 'AI Pipeline', icon: 'ti-cpu', group: 'System' },
-    { id: 'cam-config', label: 'Camera Config', icon: 'ti-settings-2' },
+    { id: 'cam-config', label: 'Camera Config', icon: 'ti-settings-2', adminOnly: true },
     { id: 'about', label: 'About', icon: 'ti-info-circle' },
   ];
 
@@ -35,39 +36,61 @@ export const Sidebar: React.FC = () => {
 
       {/* Navigation */}
       <nav className="py-[8px] flex-1 overflow-y-auto">
-        {navItems.map((item, idx) => (
-          <React.Fragment key={item.id}>
-            {item.group && (
-              <div className={`px-[18px] pb-[4px] text-[8.5px] tracking-[2px] uppercase text-tx4 font-[700] ${idx > 0 ? 'pt-[14px]' : 'pt-[10px]'}`}>
-                {item.group}
-              </div>
-            )}
-            <div
-              onClick={() => goToPage(item.id)}
-              className={`flex items-center gap-[10px] px-[18px] py-[9px] cursor-pointer border-l-2 transition-all duration-150 ${
-                currentPage === item.id
-                  ? 'text-cyan border-cyan bg-gradient-to-r from-cyan-dd to-transparent'
-                  : 'text-tx3 border-transparent hover:text-tx2 hover:bg-b0'
-              }`}
-            >
-              <i className={`ti ${item.icon} text-[16px] shrink-0 ${currentPage === item.id ? 'opacity-100 text-cyan' : 'opacity-80'}`}></i>
-              <span className="text-[12.5px] font-[500]">{item.label}</span>
-              {item.badge !== undefined && item.badge > 0 && (
-                <span className="ml-auto text-[10px] font-[700] bg-red-d text-red px-[7px] py-[1px] rounded-[20px] border border-red/20 min-w-[20px] text-center">
-                  {item.badge}
-                </span>
+        {navItems.map((item, idx) => {
+          const isRestricted = item.adminOnly && !isAdmin;
+          return (
+            <React.Fragment key={item.id}>
+              {item.group && (
+                <div className={`px-[18px] pb-[4px] text-[8.5px] tracking-[2px] uppercase text-tx4 font-[700] ${idx > 0 ? 'pt-[14px]' : 'pt-[10px]'}`}>
+                  {item.group}
+                </div>
               )}
-            </div>
-          </React.Fragment>
-        ))}
+              <div
+                onClick={() => {
+                  if (isRestricted) {
+                    alert('Access Restricted: Admin role required for Camera Configuration');
+                    return;
+                  }
+                  goToPage(item.id);
+                }}
+                className={`flex items-center gap-[10px] px-[18px] py-[9px] border-l-2 transition-all duration-150 ${
+                  isRestricted
+                    ? 'opacity-40 cursor-not-allowed text-tx4 border-transparent'
+                    : currentPage === item.id
+                    ? 'text-cyan border-cyan bg-gradient-to-r from-cyan-dd to-transparent cursor-pointer'
+                    : 'text-tx3 border-transparent hover:text-tx2 hover:bg-b0 cursor-pointer'
+                }`}
+                title={isRestricted ? 'Admin role required' : undefined}
+              >
+                <i className={`ti ${item.icon} text-[16px] shrink-0 ${currentPage === item.id ? 'opacity-100 text-cyan' : 'opacity-80'}`}></i>
+                <span className="text-[12.5px] font-[500]">{item.label}</span>
+                {isRestricted && (
+                  <i className="ti ti-lock text-[11px] text-tx4 ml-auto" title="Admin only"></i>
+                )}
+                {item.badge !== undefined && item.badge > 0 && !isRestricted && (
+                  <span className="ml-auto text-[10px] font-[700] bg-red-d text-red px-[7px] py-[1px] rounded-[20px] border border-red/20 min-w-[20px] text-center">
+                    {item.badge}
+                  </span>
+                )}
+              </div>
+            </React.Fragment>
+          );
+        })}
       </nav>
 
-      {/* Footer System Status */}
-      <div className="p-[14px] px-[18px] border-t border-b0">
+      {/* Footer System & Backend Status */}
+      <div className="p-[14px] px-[18px] border-t border-b0 space-y-[8px]">
+        {/* Arming Status */}
         <div className="flex items-center gap-[8px] p-[8px] px-[10px] bg-cyan-dd border border-cyan/15 rounded-rad2">
           <div className={`w-[7px] h-[7px] rounded-full shrink-0 ${armed ? 'bg-cyan shadow-[0_0_8px_#00e5b8] animate-pulse-glow' : 'bg-amber shadow-[0_0_8px_#ffa726]'}`}></div>
           <div className="text-[10.5px] text-tx2 flex-1 font-medium">{armed ? 'System Armed' : 'System Standby'}</div>
           <div className="text-[9.5px] text-tx3 font-mono">v0.1</div>
+        </div>
+
+        {/* Backend Synced Indicator */}
+        <div className="flex items-center gap-[6px] px-[4px] text-[9.5px] font-mono text-tx3">
+          <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${backendConnected ? 'bg-green shadow-[0_0_6px_#51cf66]' : 'bg-amber'}`} />
+          <span>{backendConnected ? 'FastAPI + SQLite Live' : 'Offline Fallback'}</span>
         </div>
       </div>
     </aside>

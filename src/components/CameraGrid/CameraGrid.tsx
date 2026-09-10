@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getSceneSvg } from '../../services/mockScenes';
+import { api } from '../../services/api';
 
 export const CameraGrid: React.FC = () => {
   const { cams, alerts, webcamActive, webcamStream, cam1Fps, openFullscreen } = useApp();
@@ -63,10 +64,23 @@ export const CameraGrid: React.FC = () => {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <div
-                        className="w-full h-full"
-                        dangerouslySetInnerHTML={{ __html: getSceneSvg(c.scene) }}
-                      />
+                      <>
+                        <img
+                          src={api.getStreamUrl(c.id)}
+                          alt={c.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLElement).style.display = 'none';
+                            const fb = document.getElementById(`grid-svg-${c.id}`);
+                            if (fb) fb.style.display = 'block';
+                          }}
+                        />
+                        <div
+                          id={`grid-svg-${c.id}`}
+                          className="w-full h-full hidden"
+                          dangerouslySetInnerHTML={{ __html: getSceneSvg(c.scene) }}
+                        />
+                      </>
                     )}
                     <div className="cv-vignette absolute inset-0 pointer-events-none" />
                     <div className="scanlines absolute inset-0 pointer-events-none" />

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getSceneSvg } from '../../services/mockScenes';
+import { api } from '../../services/api';
 
 export const CamViewport: React.FC = () => {
   const {
@@ -14,7 +15,8 @@ export const CamViewport: React.FC = () => {
     cam1Fps,
     isFenceBreached,
     openFullscreen,
-    triggerWeaponDemo
+    triggerWeaponDemo,
+    toggleCamNight
   } = useApp();
 
   const [simBoxes, setSimBoxes] = useState<any[]>([]);
@@ -70,16 +72,8 @@ export const CamViewport: React.FC = () => {
         <div className="mr-auto flex items-center gap-[6px]">
           <span className="bg-cyan-dd border border-cyan/20 px-[8px] py-[2px] rounded-[12px] text-[9.5px] text-cyan font-mono font-[600] flex items-center gap-[4px]">
             <i className="ti ti-cpu text-[11px]"></i>
-            CAM-01: {webcamActive ? 'REAL WEBCAM AI' : 'TF.js COCO-SSD READY'}
+            CAM-01: {webcamActive ? 'Webcam AI Active' : 'AI Ready'}
           </span>
-          <button
-            onClick={triggerWeaponDemo}
-            className="px-[8px] py-[2px] text-[9.5px] bg-red-d text-red border border-red/30 rounded-[12px] font-mono font-[700] hover:bg-red/20 transition-colors flex items-center gap-[4px]"
-            title="Press 'K' key to demo threat weapon detection"
-          >
-            <i className="ti ti-crosshair text-[11px]"></i>
-            Threat Demo [K]
-          </button>
         </div>
 
         {/* Camera Selector Tabs */}
@@ -116,10 +110,25 @@ export const CamViewport: React.FC = () => {
           <div className="text-[11px] text-tx3">
             {cam.location}
           </div>
+
+          {/* Night Mode Toggle Button */}
+          {cam.online && (
+            <button
+              onClick={() => toggleCamNight(cam.id)}
+              className={`text-[9.5px] font-[700] uppercase tracking-[0.4px] px-[8px] py-[2px] rounded-[5px] border flex items-center gap-[4px] transition-colors ${
+                cam.night ? 'bg-violet-d text-violet border-violet/30' : 'bg-s2 text-tx3 border-b1 hover:text-tx'
+              }`}
+              title="Toggle IR Low-Light Night Vision Enhancement"
+            >
+              <i className={`ti ${cam.night ? 'ti-moon-stars' : 'ti-sun'} text-[11px]`}></i>
+              {cam.night ? 'IR Night Active' : 'Optical Day'}
+            </button>
+          )}
+
           <span className={`text-[9.5px] font-[700] uppercase tracking-[0.4px] px-[8px] py-[2px] rounded-[5px] border ${
             cam.online ? 'bg-cyan-d text-cyan border-cyan/25' : 'bg-red-d text-red border-red/25'
           }`}>
-            {cam.online ? (isWebcamCam1 ? 'AI Live' : 'Online') : 'Offline'}
+            {cam.online ? (isWebcamCam1 ? 'AI Live' : 'Online · Live Stream') : 'Offline'}
           </span>
         </div>
 
@@ -134,10 +143,26 @@ export const CamViewport: React.FC = () => {
             className={`absolute inset-0 w-full h-full object-cover z-0 ${isWebcamCam1 ? 'block' : 'hidden'}`}
           />
 
-          {/* SVG Illustrated Fallback Scene (for CAM-02, 03, 04 or CAM-01 offline/simulated) */}
+          {/* Live MJPEG Stream for CAM-02, 03, 04 from FastAPI Backend */}
+          {!isWebcamCam1 && cam.online && (
+            <img
+              src={api.getStreamUrl(cam.id)}
+              alt={cam.name}
+              className="absolute inset-0 w-full h-full object-cover z-0"
+              onError={(e) => {
+                // Fallback to SVG if backend stream is not reached
+                (e.currentTarget as HTMLElement).style.display = 'none';
+                const fb = document.getElementById(`svg-fb-${cam.id}`);
+                if (fb) fb.style.display = 'block';
+              }}
+            />
+          )}
+
+          {/* SVG Illustrated Fallback Scene */}
           {!isWebcamCam1 && cam.online && (
             <div
-              className="absolute inset-0 z-0"
+              id={`svg-fb-${cam.id}`}
+              className="absolute inset-0 z-0 hidden"
               dangerouslySetInnerHTML={{ __html: getSceneSvg(cam.scene) }}
             />
           )}
@@ -147,7 +172,7 @@ export const CamViewport: React.FC = () => {
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-[8px] bg-[repeating-linear-gradient(135deg,#080d14,#080d14_10px,#09111a_10px,#09111a_20px)]">
               <i className="ti ti-video-off text-[38px] text-tx4"></i>
               <div className="text-[12.5px] text-red font-[700]">Camera Offline</div>
-              <div className="text-[10.5px] text-tx4">Stream disconnected — local NVR recording unaffected</div>
+              <div className="text-[10.5px] text-tx4">Stream disconnected</div>
             </div>
           )}
 
@@ -182,7 +207,7 @@ export const CamViewport: React.FC = () => {
                 {timeStamp}
               </div>
               <div className={`osd absolute bottom-[34px] right-[12px] font-mono font-[600] text-[10.5px] text-white/90 z-[5] pointer-events-none drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] text-right ${cam.night ? 'text-[#b4ffd2]' : ''}`}>
-                {cam.geo} {isWebcamCam1 ? '· TF.JS COCO-SSD' : (cam.night ? '· IR MODE' : '')}
+                {cam.geo} {isWebcamCam1 ? '· AI ACTIVE' : (cam.night ? '· IR NIGHT' : '')}
               </div>
             </>
           )}
