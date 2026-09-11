@@ -6,9 +6,13 @@
 
 ## 📌 Executive Summary
 
-**IBVAP** (Intelligent Border Video Analytics Platform) is an edge-optimized, multi-camera surveillance and threat intelligence system designed for real-time border security, sensitive perimeter monitoring, and critical infrastructure protection. 
+**IBVAP** (Intelligent Border Video Analytics Platform) is a mission-critical **Thin-Camera $\rightarrow$ Local GPU Hub $\rightarrow$ Tactical Dashboard** surveillance and threat intelligence system designed for real-time border security, forward operating bases (FOBs), and sensitive perimeter defense.
 
-The architecture converts raw, unmanaged RTSP CCTV video feeds into prioritized, contextualized, and actionable security alerts using a high-throughput cascaded AI pipeline, spatial-temporal rules engine, and an automated chain-of-custody evidence vault.
+### 🏛️ Field-Tested Thin Edge / Local GPU Hub Architecture
+Rather than deploying fragile, expensive GPU computers on remote camera poles exposed to harsh desert/mountain weather:
+1. **Thin Field Cameras (Optical / Thermal):** Stream lightweight, compressed video feeds (H.264/H.265/MJPEG keyframes) over low-bandwidth tactical radio, VSAT, or cellular uplinks with adaptive frame sub-sampling.
+2. **Centralized Local GPU Server Hub (FOB / Base Bunker):** Houses dedicated GPU compute (NVIDIA RTX / Jetson Orin) in a protected, climate-controlled command environment to decode streams, execute real-time YOLOv8 ONNX inference, process spatial polygon rules, and anchor immutable 3-tier cryptographic ledgers.
+3. **Tactical Command Dashboard (Console / Sentry Station):** Lightweight browser console receiving sub-100ms real-time alerts, bounding box telemetry, and forensic snapshots via WebSockets.
 
 > 📖 **Authoritative Specifications & Documentation:**
 > - [Authoritative Product PRD](docs/PRODUCT_PRD.md): The consolidated, single source of truth for the IBVAP platform, covering all 27 technical architecture sections, stable FR IDs, AI model provenance, and acceptance criteria.
@@ -367,16 +371,15 @@ npm run dev
 
 ## 🎤 Presentation Notes for SIH PPT (1-Minute Elevator Pitch)
 
-> *"Respected jury members, our system **IBVAP** solves the fundamental problem of modern border and perimeter surveillance: **turning dumb CCTV cameras into proactive tactical sensors**.*
+> *"Respected jury members, our system **IBVAP** solves the fundamental deployment barrier of modern border surveillance: **avoiding expensive, delicate GPU hardware on thousands of exposed border poles**.*
 > 
-> *As shown in our Technical Approach flowchart, the architecture flows systematically across 6 unified stages:*
-> *1. **Ingestion & Conditioning:** We connect to any existing IP CCTV camera via RTSP, decode, normalize, and stamp frames with microsecond telemetry.*
-> *2. **Load-Balanced Queues:** Dedicated per-camera queues prevent bottlenecks and balance computational loads.*
-> *3. **Cascaded AI Pipeline:** Using YOLOv8 and ByteTrack, we identify subjects, build trajectory vectors, and track IDs continuously across frames.*
-> *4. **Spatial-Temporal Intelligence:** We filter out 95% of false alarms by cross-referencing detections with geometric virtual fences, dwell-time counters, and loitering heuristics.*
-> *5. **Command & Control:** When a verified threat occurs, alerts are dispatched via WebSockets in under 200 milliseconds to our React dashboard with full forensic snapshots and video evidence.*
+> *Instead, we employ an ultra-reliable **Thin-Camera $\rightarrow$ Local GPU Hub $\rightarrow$ Tactical Dashboard** architecture:*
+> *1. **Thin Field Cameras:** Standard legacy CCTV and thermal cameras capture frames, apply adaptive low-bandwidth compression (sub-sampling keyframes), and transmit over constrained border links (RF, VSAT, 4G/5G).*
+> *2. **Local GPU Server Hub:** Located safely inside the Forward Operating Base (FOB) bunker, our central GPU server decodes incoming streams, runs high-throughput YOLOv8 ONNX threat detection, and enforces directional tripwires and loitering rules.*
+> *3. **Tamper-Evident Ledger:** Every incident is chained into our 3-tier cryptographic framework (local SHA-256 chain, $O(\log N)$ Merkle proofs with model weight provenance, and 2-of-3 multisig blockchain anchoring).*
+> *4. **Tactical Command Dashboard:** Sentry operators receive verified alerts, red bounding boxes, and patrol intercept vectors in under 100 milliseconds.*
 > 
-> *Our tech stack combines Python, OpenCV, YOLO, ByteTrack, FastAPI, PostgreSQL, and React for maximum edge-readiness and field reliability."*
+> *This design delivers 95% bandwidth savings, eliminates thermal failure at remote poles, and ensures court-admissible chain of custody for sovereign defense."*
 
 ---
 

@@ -15,16 +15,17 @@
 **IBVAP** — Intelligent Border Video Analytics Platform
 
 ### 1.2 One-Line Description
-A mission-critical edge-to-cloud border surveillance intelligence system featuring real-time computer vision threat detection, tactical spatial reasoning, and a 3-tier verifiable tamper-evident cryptographic audit chain (local SHA-256 hash-chain, deterministic Merkle proofs with AI model provenance, and 2-of-3 multisignature blockchain anchoring).
+A mission-critical **Thin-Camera $\rightarrow$ Local GPU Hub $\rightarrow$ Tactical Dashboard** border surveillance intelligence system featuring low-bandwidth field frame streaming, high-throughput centralized base GPU inference, tactical spatial reasoning, and a 3-tier verifiable tamper-evident cryptographic audit chain (local SHA-256 hash-chain, deterministic Merkle proofs with AI model provenance, and 2-of-3 multisignature blockchain anchoring).
 
 ### 1.3 Product Vision
-To provide sovereign border defense and security agencies with an infallible, zero-latency situational awareness and automated perimeter monitoring platform that replaces manual screen fatigue with intelligent multi-threat computer vision, guarantees absolute legal chain-of-custody through mathematical proofs, and functions reliably across bandwidth-constrained, harsh tactical edge environments.
+To provide sovereign border defense and security agencies with a practical, thermally resilient perimeter monitoring architecture that eliminates the fragility of placing expensive GPU compute on remote field poles, streams compressed lightweight frames over low-bandwidth tactical links to a central Forward Operating Base (FOB) GPU server, guarantees absolute legal chain-of-custody through mathematical proofs, and delivers instant threat alerts to sentry command dashboards.
 
 ### 1.4 Product Objective
-1. **Automate Continuous Threat Detection:** Eliminate operator screen fatigue across 24/7 border monitoring through sub-100ms multi-camera AI detection of unauthorized perimeter breaches, weapon brandishing, loitering, and optical occlusions.
-2. **Provide Real-Time Geospatial Tactical Decision Support:** Transform raw video detections into actionable 2D/3D geospatial coordinates with automated patrol intercept vectors and sector-level threat heatmaps.
-3. **Guarantee Evidentiary Integrity via 3-Tier Cryptography:** Provide tamper-evident, court-admissible audit logs by binding alerts to local SHA-256 hash-chains, O(log N) Merkle inclusion proofs, model provenance hashes, and decentralized 2-of-3 multisignature Ethereum/EVM blockchain anchors without ever leaking sensitive surveillance telemetry off-chain.
-4. **Deliver Extreme Edge & Network Resilience:** Maintain autonomous detection, local buffering, and cryptographic chaining during wide-area network (WAN) blackouts with automatic bi-directional synchronization upon uplink restoration.
+1. **Practical Thin-Field Ingestion:** Stream lightweight, compressed video frames (H.264/H.265/MJPEG keyframes) from thin optical/thermal field cameras over bandwidth-constrained tactical radio, VSAT, or cellular links.
+2. **Centralized Local GPU Acceleration:** Ingest and decode multiple camera feeds simultaneously on a protected Forward Operating Base (FOB) local GPU hub, executing sub-50ms YOLOv8 ONNX threat detection, directional tripwire crossing, and loitering evaluation.
+3. **Automated Threat Dispatch:** Push prioritized threat events, bounding box coordinates, and encrypted snapshots to the sentry web dashboard in $< 100$ ms via WebSockets.
+4. **Guarantee Evidentiary Integrity via 3-Tier Cryptography:** Provide tamper-evident, court-admissible audit logs by binding alerts to local SHA-256 hash-chains, O(log N) Merkle inclusion proofs, model provenance hashes, and decentralized 2-of-3 multisignature Ethereum/EVM blockchain anchors without ever leaking sensitive surveillance telemetry off-chain.
+5. **Bandwidth Optimization & WAN Resilience:** Achieve $\ge 90\%$ bandwidth reduction over traditional raw streaming, maintaining full local recording and cryptographic integrity during external uplink blackouts.
 
 ---
 
@@ -386,50 +387,55 @@ Tactical intercept recommendations are computed deterministically without specul
 ```
 +----------------------------------------------------------------------------------------------------+
 |                                           IBVAP PLATFORM                                           |
+|                  (Thin Field Camera ──► Local Base GPU Hub ──► Tactical Dashboard)                 |
 +----------------------------------------------------------------------------------------------------+
 
- [ SENSORS / CAMERAS ]
+ [ THIN FIELD CAMERAS (NO FIELD GPU REQUIRED) ]
    │
-   ├─► RTSP Border CCTV Stream
-   ├─► Thermal PTZ Feed
-   ├─► USB / Edge Field Scope
-   └─► Synthetic Tactical Video Generator
+   ├─► Optical Border CCTV Pole (H.264/H.265 sub-sampled keyframes)
+   ├─► Thermal Long-Wave IR Camera (Low-FPS grayscale feed)
+   └─► Checkpost Entry Gate Camera (MJPEG / RTSP)
          │
+         ▼  [ LOW-BANDWIDTH TRANSPORT: Tactical RF / VSAT / 4G / Fiber ]
+         │  (Bandwidth-optimized compressed stream, ~250-500 kbps per camera)
          ▼
- [ EDGE INGESTION & BOUNDED QUEUE ]
-   │  (Drop-oldest bounded FIFO queue; FPS monitor; frame pre-processing)
-   ▼
- [ COMPUTER VISION INFERENCE ENGINE ]
-   │  (YOLOv8 ONNX Runtime + CentroidTracker + Tampering Detector)
-   ▼
- [ SPATIAL RULES ENGINE ]
-   │  (Polygon exclusion zones + Directional tripwires + Loitering dwell timers)
-   ▼
- [ GOVERNANCE & ETHICAL GATE ]
-   │  (Checks active GovernanceApproval token for Face / ANPR processing)
-   ▼
- [ CORE FASTAPI BACKEND SERVICE ]
-   │
-   ├──► [ REST / WebSocket API ] ──────────────► [ "Watermelon Command" Frontend UI ]
-   │                                                 (React 19 / Vite / Leaflet Map / Lucide)
-   │
-   ├──► [ Evidentiary Storage ] ────────────────► Local Disk (AES-256-GCM Encrypted Snapshots)
-   │
-   └──► [ 3-TIER CRYPTOGRAPHIC LEDGER ENGINE ]
-          │
-          ├─► TIER 1: Local Append-Only SHA-256 Hash-Chain (SQLite / PostgreSQL)
-          │
-          ├─► TIER 2: Deterministic Pairwise Merkle Tree + AI Model Provenance
-          │           (Computes O(log N) proofs & binds detector weight hashes)
-          │
-          └─► TIER 3: 2-of-3 Multisig External Blockchain Anchoring
-                      (Domain: IBVAP_ANCHOR_PROPOSAL_V1 -> LedgerAnchor.sol EVM)
++----------------------------------------------------------------------------------------------------+
+| [ LOCAL GPU SERVER HUB ] (Protected FOB Command Bunker / Headquarters)                             |
+|                                                                                                    |
+|  1. INGESTION & BOUNDED BUFFER                                                                     |
+|     (Decodes incoming packets; drop-oldest FIFO queue; jitter smoothing)                           |
+|                                                                                                    |
+|  2. CENTRALIZED GPU AI ENGINE                                                                      |
+|     (High-throughput YOLOv8 ONNX on NVIDIA RTX/Orin; CentroidTracker; Tamper Detector)              |
+|                                                                                                    |
+|  3. SPATIAL & ETHICAL RULES ENGINE                                                                 |
+|     (Multi-point polygon exclusion; directional tripwires; loiter timers; biometric governance)    |
+|                                                                                                    |
+|  4. 3-TIER CRYPTOGRAPHIC LEDGER ENGINE                                                             |
+|     ├─► Tier 1: Local SHA-256 Hash Chain (Immutable event log)                                     |
+|     ├─► Tier 2: Pairwise Deterministic Merkle Trees + AI Model Weight Provenance                   |
+|     └─► Tier 3: 2-of-3 Multisig EVM Blockchain Anchoring (LedgerAnchor.sol)                        |
+|                                                                                                    |
+|  5. DISPATCH & EVIDENTIARY VAULT                                                                   |
+|     ├─► AES-256-GCM Encrypted Snapshot Storage                                                     |
+|     └─► Real-Time WebSocket Broadcaster (< 100 ms alert dispatch)                                  |
++----------------------------------------------------------------------------------------------------+
+         │
+         ▼  [ LOCAL SECURE LAN / CONSOLE LINK ]
+         │  (WebSockets for events + REST API for management)
+         ▼
+ [ "WATERMELON COMMAND" TACTICAL SENTRY DASHBOARD ]
+   ├─► Live Multi-Camera Grid (CAM-01 through CAM-04)
+   ├─► Real-Time Breach Alarms with SVG Target Bounding Boxes
+   ├─► 2D/3D Geospatial Tactical Map with QRT Intercept Vectors
+   └─► Forensic Ledger Verification Modal (SHA-256, Merkle proofs, EVM block receipts)
 ```
 
 ### 13.2 Detailed Architectural Data Flow
-$$\text{Video Frame} \xrightarrow{\text{Capture}} \text{Tensor } (640\times640\times3) \xrightarrow{\text{YOLOv8}} \text{Detections } \{\text{bbox}, \text{class}, \text{conf}\}$$
-$$\xrightarrow{\text{Tracking}} \text{Tracked Object } (\text{ID}, \vec{v}, \text{trajectory}) \xrightarrow{\text{Rules}} \text{Zone Violation Event}$$
-$$\xrightarrow{\text{FastAPI}} \begin{cases} \text{WebSocket Push to React Dashboard} \\ \text{Local SQLite Hash Chain Record} \\ \text{Batch Accumulator} \rightarrow \text{Merkle Root} \rightarrow \text{Multisig EVM Anchor} \end{cases}$$
+$$\text{Thin Camera Frame} \xrightarrow{\text{Compress / Subsample}} \text{Low-Bandwidth Stream } (\text{H.264 / MJPEG})$$
+$$\xrightarrow{\text{Uplink}} \text{Local GPU Hub Decode} \xrightarrow{\text{YOLOv8 GPU}} \text{Detections } \{\text{bbox}, \text{class}, \text{conf}\}$$
+$$\xrightarrow{\text{Tracking \& Spatial Rules}} \text{Threat Violation Event} \xrightarrow{\text{3-Tier Ledger}} \begin{cases} \text{Tier 1: Local SHA-256 Chain} \\ \text{Tier 2: Merkle Tree + Model Hash} \\ \text{Tier 3: 2-of-3 Multisig EVM Anchor} \end{cases}$$
+$$\xrightarrow{\text{WebSocket (<100ms)}} \text{Tactical Command Dashboard (Visual / Audio Alarm)}$$
 
 ---
 
