@@ -1,7 +1,14 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Camera, Alert, PageId, DetectionBox, TypeMeta } from '../types';
 import { loadCocoSsdModel, captureFrameWithBoxes } from '../services/aiDetection';
-import { api, UserAuth } from '../services/api';
+import { api, UserAuth, MetricsResponse, ReadinessResponse } from '../services/api';
+import {
+  isWebcamCapable,
+  DEFAULT_WEBCAM_CAMERA_ID,
+  resolveWebcamCamera,
+  computeTelemetryFreshness,
+  TELEMETRY_STALE_THRESHOLD_MS
+} from '../utils/camera';
 
 export const TYPE_META: Record<string, TypeMeta> = {
   intrusion: { label: 'Virtual Fence Intrusion', icon: 'ti-fence', cls: 'text-red bg-red-d border-red/30', sev: 'high' },
@@ -13,15 +20,15 @@ export const TYPE_META: Record<string, TypeMeta> = {
 };
 
 const INITIAL_CAMS: Camera[] = [
-  { id: 'cam-1', name: 'CAM-01 · North Perimeter', location: 'BOP Alpha — North Fence Line', online: true, priority: 'High', fps: 9, night: false, scene: 'fence', geo: '29.5481°N 74.8763°E', anchor: { left: 44, top: 46, w: 9, h: 26 }, rtspUrl: 'rtsp://cam-1.bop.local:554/stream1' },
-  { id: 'cam-2', name: 'CAM-02 · Check Post Gate', location: 'BOP Alpha — Gate Road', online: true, priority: 'Medium', fps: 8, night: false, scene: 'gate', geo: '29.5502°N 74.8791°E', anchor: { left: 41, top: 52, w: 20, h: 24 }, rtspUrl: 'rtsp://cam-2.bop.local:554/stream2' },
-  { id: 'cam-3', name: 'CAM-03 · Border Road', location: 'BOP Bravo — Approach Road', online: true, priority: 'High', fps: 9, night: true, scene: 'night', geo: '29.6104°N 74.9038°E', anchor: { left: 47, top: 50, w: 18, h: 22 }, rtspUrl: 'rtsp://cam-3.bop.local:554/stream1' },
-  { id: 'cam-4', name: 'CAM-04 · East Watchtower', location: 'BOP Bravo — East Ridge', online: false, priority: 'Medium', fps: 0, night: false, scene: 'fence', geo: '29.6140°N 74.9102°E', anchor: { left: 44, top: 46, w: 9, h: 26 }, rtspUrl: 'rtsp://cam-4.bop.local:554/stream2' },
+  { id: 'cam-1', name: 'CAM-01 · North Perimeter', location: 'BOP Alpha — North Fence Line', online: true, priority: 'High', fps: 9, night: false, scene: 'fence', geo: '29.5481°N 74.8763°E', anchor: { left: 44, top: 46, w: 9, h: 26 }, rtspUrl: 'rtsp://cam-1.bop.local:554/stream1', supportsWebcam: true, sourceType: 'webcam' },
+  { id: 'cam-2', name: 'CAM-02 · Check Post Gate', location: 'BOP Alpha — Gate Road', online: true, priority: 'Medium', fps: 8, night: false, scene: 'gate', geo: '29.5502°N 74.8791°E', anchor: { left: 41, top: 52, w: 20, h: 24 }, rtspUrl: 'rtsp://cam-2.bop.local:554/stream2', sourceType: 'rtsp' },
+  { id: 'cam-3', name: 'CAM-03 · Border Road', location: 'BOP Bravo — Approach Road', online: true, priority: 'High', fps: 9, night: true, scene: 'night', geo: '29.6104°N 74.9038°E', anchor: { left: 47, top: 50, w: 18, h: 22 }, rtspUrl: 'rtsp://cam-3.bop.local:554/stream1', sourceType: 'rtsp' },
+  { id: 'cam-4', name: 'CAM-04 · East Watchtower', location: 'BOP Bravo — East Ridge', online: false, priority: 'Medium', fps: 0, night: false, scene: 'fence', geo: '29.6140°N 74.9102°E', anchor: { left: 44, top: 46, w: 9, h: 26 }, rtspUrl: 'rtsp://cam-4.bop.local:554/stream2', sourceType: 'rtsp' },
 ];
 
 let alertSeq = 1;
-export function mkAlert(type: string, camId: string, minsAgo: number, detail: string, reviewed = false, snapshot?: string | null, customConf?: number): Alert {
-  const cam = INITIAL_CAMS.find(c => c.id === camId) || INITIAL_CAMS[0];
+export function mkAlert(type: string, camId: string, minsAgo: number, detail: string, reviewed = false, snapshot?: string | null, customConf?: number, provenance: 'detector' | 'simulation' = 'simulation', camera?: Camera): Alert {
+  const cam = camera || INITIAL_CAMS.find(c => c.id === camId) || INITIAL_CAMS[0];
   const t = new Date(Date.now() - minsAgo * 60000);
   const meta = TYPE_META[type] || TYPE_META.intrusion;
   return {
@@ -35,6 +42,10 @@ export function mkAlert(type: string, camId: string, minsAgo: number, detail: st
     trackId: '#' + (100 + Math.floor(Math.random() * 900)),
     detail,
     reviewed,
+    state: reviewed ? 'resolved' : 'open',
+    provenance,
+    ruleId: `rule-${camId}-01`,
+    ruleVersion: '1.0',
     ts: t,
     snapshot: snapshot || null,
   };
@@ -55,6 +66,7 @@ const INITIAL_ALERTS: Alert[] = [
   mkAlert('anpr', 'cam-1', 160, 'Plate HR-26-BQ-7742 — flagged vehicle list', true),
 ];
 
+
 interface AppContextType {
   cams: Camera[];
   alerts: Alert[];
@@ -65,17 +77,31 @@ interface AppContextType {
   webcamActive: boolean;
   webcamError: string | null;
   liveDetections: DetectionBox[];
+  webcamFps: number;
   cam1Fps: number;
+  webcamCam: Camera | null;
+  webcamCamId: string | null;
+  isCamWebcamActive: (camId?: string | null) => boolean;
   isFenceBreached: boolean;
   activeLightboxAlert: Alert | null;
   fullscreenCamId: string | null;
   videoRef: React.RefObject<HTMLVideoElement>;
   currentUser: UserAuth | null;
   backendConnected: boolean;
+  apiAvailable: boolean;
+  websocketConnected: boolean;
+  metrics: MetricsResponse | null;
+  lastMetricsAt: number | null;
+  telemetryFreshness: 'live' | 'stale' | 'unavailable';
+  readiness: ReadinessResponse | null;
+  latencyPingMs: number | null;
+  notice: { type: 'error' | 'success'; message: string } | null;
+  mobileMenuOpen: boolean;
   toggleArmed: () => void;
   selectCam: (id: string) => void;
   goToPage: (page: PageId) => void;
   markReviewed: (id: string) => void;
+  updateAlertState: (id: string, state: 'open' | 'acknowledged' | 'resolved' | 'false_positive', assignedTo?: string, note?: string) => void;
   openLightbox: (id: string) => void;
   closeLightbox: () => void;
   openFullscreen: (camId: string) => void;
@@ -89,6 +115,13 @@ interface AppContextType {
   switchRoleDemo: (role: 'operator' | 'supervisor' | 'admin') => Promise<void>;
   startWebcam: () => Promise<void>;
   stopWebcam: () => void;
+  showNotice: (type: 'error' | 'success', message: string) => void;
+  dismissNotice: () => void;
+  toggleMobileMenu: () => void;
+  closeMobileMenu: () => void;
+  activePatrolAlert: Alert | null;
+  openPatrolModal: (alert?: Alert) => void;
+  closePatrolModal: () => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -103,7 +136,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [webcamActive, setWebcamActive] = useState<boolean>(false);
   const [webcamError, setWebcamError] = useState<string | null>(null);
   const [liveDetections, setLiveDetections] = useState<DetectionBox[]>([]);
-  const [cam1Fps, setCam1Fps] = useState<number>(0);
+  const [webcamFps, setWebcamFps] = useState<number>(0);
+  const cam1Fps = webcamFps;
+  const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
+  const [lastMetricsAt, setLastMetricsAt] = useState<number | null>(null);
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
+  const [readiness, setReadiness] = useState<ReadinessResponse | null>(null);
+  const [latencyPingMs, setLatencyPingMs] = useState<number | null>(null);
   const [isFenceBreached, setIsFenceBreached] = useState<boolean>(false);
   const [activeLightboxAlert, setActiveLightboxAlert] = useState<Alert | null>(null);
   const [fullscreenCamId, setFullscreenCamId] = useState<string | null>(null);
@@ -117,7 +156,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Default to admin for seamless judge evaluation
     return { username: 'admin', role: 'admin', accessToken: '' };
   });
-  const [backendConnected, setBackendConnected] = useState<boolean>(false);
+  const [apiAvailable, setApiAvailable] = useState<boolean>(false);
+  const [websocketConnected, setWebsocketConnected] = useState<boolean>(false);
+  const backendConnected = apiAvailable;
+  const [notice, setNotice] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activePatrolAlert, setActivePatrolAlert] = useState<Alert | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastIntrusionRef = useRef<number>(0);
@@ -131,6 +175,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const fpsCountRef = useRef<number>(0);
   const lastFpsTimeRef = useRef<number>(performance.now());
+
+  // Clock tick to evaluate telemetry freshness every second
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Telemetry freshness: live (<15s), stale (>=15s), or unavailable
+  const telemetryFreshness = useMemo<'live' | 'stale' | 'unavailable'>(() => {
+    return computeTelemetryFreshness(metrics, lastMetricsAt, nowTick);
+  }, [metrics, lastMetricsAt, nowTick]);
+
+  // Centralized resolution of webcam-capable camera
+  const webcamCam = useMemo(() => {
+    return resolveWebcamCamera(cams);
+  }, [cams]);
+
+  const webcamCamId = webcamCam?.id ?? null;
+
+  const isCamWebcamActive = useCallback((camId?: string | null): boolean => {
+    if (!camId || !webcamActive) return false;
+    return camId === webcamCamId;
+  }, [webcamActive, webcamCamId]);
 
   // Synchronize with backend on mount or user change
   useEffect(() => {
@@ -151,14 +218,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
 
-        const [camsRes, alertsRes] = await Promise.all([
-          api.getCameras(token),
-          api.getAlerts(undefined, token)
+        const pingStart = performance.now();
+        const [camsRes, alertsRes, metricsRes, readyRes] = await Promise.all([
+          api.getCameras(token).catch(() => null),
+          api.getAlerts(undefined, token).catch(() => null),
+          api.getMetrics(token).catch(() => null),
+          api.getReadiness().catch(() => null)
         ]);
         if (!mounted) return;
-        if (camsRes && camsRes.length > 0) setCams(camsRes);
+        setLatencyPingMs(Math.round(performance.now() - pingStart));
+        if (camsRes || alertsRes || metricsRes || readyRes) {
+          setApiAvailable(true);
+        }
+        if (camsRes && camsRes.length > 0) {
+          setCams(camsRes);
+          setActiveCamId(prev => camsRes.some(c => c.id === prev) ? prev : camsRes[0].id);
+        }
         if (alertsRes && alertsRes.length > 0) setAlerts(alertsRes);
-        setBackendConnected(true);
+        if (metricsRes) {
+          setMetrics(metricsRes);
+          setLastMetricsAt(Date.now());
+        }
+        if (readyRes) setReadiness(readyRes);
       } catch (err) {
         console.warn('Backend sync error (using local fallback):', err);
       }
@@ -176,7 +257,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const url = api.getWsUrl();
         ws = new WebSocket(url);
-        ws.onopen = () => setBackendConnected(true);
+        ws.onopen = () => setWebsocketConnected(true);
         ws.onmessage = (event) => {
           try {
             const msg = JSON.parse(event.data);
@@ -189,14 +270,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 if (prev.some(a => a.id === incoming.id)) return prev;
                 return [incoming, ...prev];
               });
+            } else if (msg.event === 'telemetry_update' && msg.data) {
+              const normalized = api.normalizeMetrics(msg.data);
+              setMetrics(normalized);
+              setLastMetricsAt(Date.now());
             }
           } catch (e) {
             console.error('WS parse error:', e);
           }
         };
-        ws.onerror = () => setBackendConnected(false);
+        ws.onerror = () => setWebsocketConnected(false);
         ws.onclose = () => {
-          setBackendConnected(false);
+          setWebsocketConnected(false);
           reconnectTimeout = setTimeout(connect, 4000);
         };
       } catch (e) {
@@ -213,6 +298,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const startWebcam = async () => {
     try {
+      const targetCam = resolveWebcamCamera(cams);
+      if (targetCam && activeCamId !== targetCam.id) {
+        setActiveCamId(targetCam.id);
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
         audio: false
@@ -250,6 +339,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           audio: false
         });
         if (!mounted) return;
+        const targetCam = resolveWebcamCamera(cams);
+        if (targetCam) {
+          setActiveCamId(targetCam.id);
+        }
         setWebcamStream(stream);
         setWebcamActive(true);
         setWebcamError(null);
@@ -271,7 +364,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         webcamStream.getTracks().forEach(t => t.stop());
       }
     };
-  }, []);
+  }, [cams]);
 
   // Synchronize video element when ref becomes available
   useEffect(() => {
@@ -351,15 +444,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           fpsCountRef.current++;
           const now = performance.now();
           if (now - lastFpsTimeRef.current >= 1000) {
-            setCam1Fps(fpsCountRef.current);
+            setWebcamFps(fpsCountRef.current);
             fpsCountRef.current = 0;
             lastFpsTimeRef.current = now;
           }
 
+          const detectionCam = webcamCam || cams.find(c => c.id === activeCamId) || cams[0] || INITIAL_CAMS[0];
           const osdMeta = {
-            camName: 'CAM-01 · North Perimeter',
-            location: 'BOP Alpha — North Fence Line',
-            geo: '29.5481°N 74.8763°E',
+            camName: detectionCam.name,
+            location: detectionCam.location,
+            geo: detectionCam.geo,
             timestamp: new Date().toLocaleString('en-GB')
           };
 
@@ -378,12 +472,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 : `CRITICAL: Weapon Threat (${pWeapon.class.toUpperCase()}) flagged by AI`;
               const newAlert = mkAlert(
                 'weapon',
-                'cam-1',
+                detectionCam.id,
                 0,
                 detail,
                 false,
                 snap,
-                Math.round(pWeapon.score * 100)
+                Math.round(pWeapon.score * 100),
+                'detector',
+                detectionCam
               );
               newAlert.sev = 'high';
               addAlert(newAlert);
@@ -406,12 +502,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const snap = captureFrameWithBoxes(video, boxes, osdMeta);
                 const newAlert = mkAlert(
                   'intrusion',
-                  'cam-1',
+                  detectionCam.id,
                   0,
                   'Virtual fence boundary crossed by individual (Live AI Detection)',
                   false,
                   snap,
-                  Math.round(pPerson.score * 100)
+                  Math.round(pPerson.score * 100),
+                  'detector',
+                  detectionCam
                 );
                 addAlert(newAlert);
               }
@@ -441,12 +539,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   const snap = captureFrameWithBoxes(video, boxes, osdMeta);
                   const newAlert = mkAlert(
                     'loiter',
-                    'cam-1',
+                    detectionCam.id,
                     0,
-                    'Individual stationary 4s+ in CAM-01 perimeter (Live AI Loiter)',
+                    `Individual stationary 4s+ in ${detectionCam.name.split('·')[0].trim()} perimeter (Live AI Loiter)`,
                     false,
                     snap,
-                    Math.round(pPerson.score * 100)
+                    Math.round(pPerson.score * 100),
+                    'detector',
+                    detectionCam
                   );
                   addAlert(newAlert);
                 }
@@ -477,10 +577,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [webcamActive, armed]);
+  }, [webcamActive, armed, cams]);
 
   // Demo Trigger "K" Key Shortcut
   const triggerWeaponDemo = () => {
+    const targetCam = cams.find(c => c.id === activeCamId) || cams[0] || INITIAL_CAMS[0];
     let boxes: DetectionBox[] = [];
     if (liveDetections.length > 0) {
       boxes = liveDetections.map(b => ({ ...b }));
@@ -489,7 +590,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         top: 38,
         w: 22,
         h: 28,
-        label: 'WEAPON DETECTED 0.96',
+        label: '[SIM] WEAPON DETECTED 0.96',
         watch: true,
         score: 0.96,
         class: 'weapon'
@@ -500,7 +601,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         top: 36,
         w: 22,
         h: 28,
-        label: 'WEAPON DETECTED 0.96',
+        label: '[SIM] WEAPON DETECTED 0.96',
         watch: true,
         score: 0.96,
         class: 'weapon'
@@ -510,28 +611,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let snap: string | null = null;
     if (videoRef.current && videoRef.current.readyState >= 2) {
       snap = captureFrameWithBoxes(videoRef.current, boxes, {
-        camName: 'CAM-01 · North Perimeter',
-        location: 'BOP Alpha — North Fence Line',
-        geo: '29.5481°N 74.8763°E',
+        camName: targetCam.name,
+        location: targetCam.location,
+        geo: targetCam.geo,
         timestamp: new Date().toLocaleString('en-GB')
       });
     }
 
     const newAlert = mkAlert(
       'weapon',
-      'cam-1',
+      targetCam.id,
       0,
       'CRITICAL: Weapon Detected — Concealed Blade (Live Demo Trigger [K])',
       false,
       snap,
-      96
+      96,
+      'simulation',
+      targetCam
     );
     newAlert.sev = 'high';
     addAlert(newAlert);
 
-    // Switch view to monitor CAM-01
+    // Switch view to monitor the camera used for the demo
     setCurrentPage('monitor');
-    setActiveCamId('cam-1');
+    setActiveCamId(targetCam.id);
 
     // Visual breach flash
     setIsFenceBreached(true);
@@ -551,16 +654,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [liveDetections]);
 
-  // Periodic simulation fallback (active only if backend WebSocket is offline)
+  // Periodic simulation fallback (active only if backend REST API is offline)
   useEffect(() => {
-    if (backendConnected) return; // Backend rule engine handles this over WebSocket when connected
+    if (apiAvailable) return; // Backend is available; never run fallback simulation while API is online
 
     const simInterval = setInterval(() => {
       if (!armed) return;
       if (Math.random() > 0.35) return;
       const simTypes = ['intrusion', 'watchlist', 'anpr', 'loiter', 'night'];
       const type = simTypes[Math.floor(Math.random() * simTypes.length)];
-      const onlineCams = cams.filter(c => c.online && c.id !== 'cam-1');
+      const onlineCams = cams.filter(c => c.online && !isCamWebcamActive(c.id));
       if (onlineCams.length === 0) return;
       const cam = onlineCams[Math.floor(Math.random() * onlineCams.length)];
 
@@ -572,25 +675,82 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         night: 'Movement detected in low-light conditions',
       };
 
-      const alert = mkAlert(type, cam.id, 0, details[type] || 'Security event detected', false);
+      const alert = mkAlert(type, cam.id, 0, details[type] || 'Security event detected', false, null, undefined, 'simulation', cam);
       setAlerts(prev => [alert, ...prev]);
     }, 12000);
 
     return () => clearInterval(simInterval);
-  }, [armed, cams, backendConnected]);
+  }, [armed, cams, apiAvailable, isCamWebcamActive]);
+
+  useEffect(() => {
+    if (!currentUser?.accessToken) return;
+    const interval = setInterval(() => {
+      const pingStart = performance.now();
+      api.getReadiness().then(res => {
+        setReadiness(res);
+        setLatencyPingMs(Math.round(performance.now() - pingStart));
+        setApiAvailable(true);
+      }).catch(() => {
+        setLatencyPingMs(null);
+      });
+      api.getMetrics(currentUser.accessToken).then(res => {
+        setMetrics(res);
+        setLastMetricsAt(Date.now());
+        setApiAvailable(true);
+      }).catch(() => {
+        // Retain last valid metrics on transient failure
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [currentUser?.accessToken]);
 
   const toggleArmed = () => setArmed(prev => !prev);
   const selectCam = (id: string) => setActiveCamId(id);
-  const goToPage = (page: PageId) => setCurrentPage(page);
+  const goToPage = (page: PageId) => {
+    setCurrentPage(page);
+    setMobileMenuOpen(false);
+  };
+  const showNotice = (type: 'error' | 'success', message: string) => setNotice({ type, message });
+  const dismissNotice = () => setNotice(null);
+  const toggleMobileMenu = () => setMobileMenuOpen(prev => !prev);
+  const closeMobileMenu = () => setMobileMenuOpen(false);
+
+  const updateAlertState = (id: string, state: 'open' | 'acknowledged' | 'resolved' | 'false_positive', assignedTo?: string, note?: string) => {
+    const isReviewed = state === 'acknowledged' || state === 'resolved' || state === 'false_positive';
+    setAlerts(prev => prev.map(a => a.id === id ? {
+      ...a,
+      state,
+      reviewed: isReviewed,
+      assignedTo: assignedTo !== undefined ? assignedTo : a.assignedTo,
+      resolutionNote: note !== undefined ? note : a.resolutionNote,
+      resolvedAt: (state === 'resolved' || state === 'false_positive') ? new Date() : a.resolvedAt
+    } : a));
+
+    if (activeLightboxAlert && activeLightboxAlert.id === id) {
+      setActiveLightboxAlert(prev => prev ? {
+        ...prev,
+        state,
+        reviewed: isReviewed,
+        assignedTo: assignedTo !== undefined ? assignedTo : prev.assignedTo,
+        resolutionNote: note !== undefined ? note : prev.resolutionNote,
+      } : null);
+    }
+
+    api.updateAlert(id, {
+      state,
+      reviewed: isReviewed,
+      assignedTo,
+      resolutionNote: note
+    }, currentUser?.accessToken).then(() => {
+      showNotice('success', `Alert ${id} updated to ${state}.`);
+    }).catch(err => {
+      console.warn('Backend updateAlert error:', err.message);
+      showNotice('error', 'Alert updated locally, but backend sync failed.');
+    });
+  };
 
   const markReviewed = (id: string) => {
-    setAlerts(prev => prev.map(a => a.id === id ? { ...a, reviewed: true } : a));
-    if (activeLightboxAlert && activeLightboxAlert.id === id) {
-      setActiveLightboxAlert(prev => prev ? { ...prev, reviewed: true } : null);
-    }
-    api.markReviewed(id, currentUser?.accessToken).catch(err => {
-      console.warn('Backend markReviewed error:', err.message);
-    });
+    updateAlertState(id, 'acknowledged');
   };
 
   const openLightbox = (id: string) => {
@@ -606,21 +766,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Persist to backend database & append to SHA-256 hash-chain ledger
     api.createAlert(alert, currentUser?.accessToken).catch(err => {
       console.warn('Failed to persist alert to backend:', err.message);
+      showNotice('error', 'Alert shown locally, but backend persistence failed.');
     });
   };
 
-  const toggleCamOnline = (id: string) => {
+  const toggleCamOnline = async (id: string) => {
+    const prevCams = [...cams];
     setCams(prev => prev.map(c => c.id === id ? { ...c, online: !c.online } : c));
-    api.toggleCamera(id, currentUser?.accessToken).catch(err => {
+    try {
+      const updated = await api.toggleCamera(id, currentUser?.accessToken);
+      setCams(prev => prev.map(c => c.id === id ? { ...c, ...updated } : c));
+      showNotice('success', `Camera ${updated.name || id} is now ${updated.online ? 'Online' : 'Offline'}.`);
+    } catch (err: any) {
       console.warn('Backend toggleCamera error:', err.message);
-    });
+      setCams(prevCams);
+      showNotice('error', 'Camera state change failed on server; state reverted.');
+    }
   };
 
-  const toggleCamNight = (id: string) => {
+  const toggleCamNight = async (id: string) => {
+    const prevCams = [...cams];
     setCams(prev => prev.map(c => c.id === id ? { ...c, night: !c.night } : c));
-    api.toggleNight(id, currentUser?.accessToken).catch(err => {
+    try {
+      const updated = await api.toggleNight(id, currentUser?.accessToken);
+      setCams(prev => prev.map(c => c.id === id ? { ...c, ...updated } : c));
+    } catch (err: any) {
       console.warn('Backend toggleNight error:', err.message);
-    });
+      setCams(prevCams);
+      showNotice('error', 'Night mode change failed on server; state reverted.');
+    }
   };
 
   const login = async (username: string, password: string) => {
@@ -643,6 +817,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await login(role, passwords[role]);
   };
 
+  const openPatrolModal = (customAlert?: Alert) => {
+    if (customAlert) {
+      setActivePatrolAlert(customAlert);
+    } else {
+      const target = alerts.find(a => a.sev === 'high' && a.state !== 'resolved') || alerts[0];
+      setActivePatrolAlert(target || null);
+    }
+  };
+
+  const closePatrolModal = () => {
+    setActivePatrolAlert(null);
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -655,17 +842,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         webcamActive,
         webcamError,
         liveDetections,
+        webcamFps,
         cam1Fps,
+        webcamCam,
+        webcamCamId,
+        isCamWebcamActive,
         isFenceBreached,
         activeLightboxAlert,
         fullscreenCamId,
         videoRef,
         currentUser,
         backendConnected,
+        apiAvailable,
+        websocketConnected,
+        metrics,
+        lastMetricsAt,
+        telemetryFreshness,
+        readiness,
+        latencyPingMs,
+        notice,
+        mobileMenuOpen,
+        activePatrolAlert,
+        openPatrolModal,
+        closePatrolModal,
         toggleArmed,
         selectCam,
         goToPage,
         markReviewed,
+        updateAlertState,
         openLightbox,
         closeLightbox,
         openFullscreen,
@@ -678,7 +882,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logout,
         switchRoleDemo,
         startWebcam,
-        stopWebcam
+        stopWebcam,
+        showNotice,
+        dismissNotice,
+        toggleMobileMenu,
+        closeMobileMenu
       }}
     >
       {children}

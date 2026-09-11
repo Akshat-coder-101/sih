@@ -1,6 +1,10 @@
 export type AlertType = 'intrusion' | 'watchlist' | 'anpr' | 'loiter' | 'night' | 'weapon';
 export type AlertSeverity = 'high' | 'med' | 'low';
-export type PageId = 'monitor' | 'camgrid' | 'alerts' | 'analytics' | 'models' | 'cam-config' | 'about';
+export type AlertState = 'open' | 'acknowledged' | 'resolved' | 'false_positive';
+export type AlertProvenance = 'detector' | 'simulation';
+export type PageId = 'monitor' | 'camgrid' | 'alerts' | 'analytics' | 'models' | 'cam-config' | 'fence-config' | 'about' | 'contact' | 'privacy' | 'terms' | 'not-found';
+
+export type CameraSourceType = 'rtsp' | 'webcam' | 'file' | 'simulation';
 
 export interface Camera {
   id: string;
@@ -19,6 +23,11 @@ export interface Camera {
     h: number;
   };
   rtspUrl?: string;
+  sourceType?: CameraSourceType;
+  supportsWebcam?: boolean;
+  activeModelVersion?: string;
+  activeRuleVersion?: string;
+  siteId?: string;
 }
 
 export interface Alert {
@@ -32,8 +41,32 @@ export interface Alert {
   trackId: string;
   detail: string;
   reviewed: boolean;
+  state: AlertState;
+  provenance: AlertProvenance;
+  ruleId?: string;
+  ruleVersion?: string;
+  sourceFrameTime?: Date | string;
+  assignedTo?: string | null;
+  resolutionNote?: string | null;
+  resolvedAt?: Date | string | null;
+  evidenceHash?: string | null;
   ts: Date;
   snapshot?: string | null;
+}
+
+export interface FenceRule {
+  id: string;
+  cameraId: string;
+  name: string;
+  ruleType: 'tripwire' | 'polygon_zone' | 'loiter_zone';
+  direction: 'bidirectional' | 'left_to_right' | 'right_to_left' | 'entry' | 'exit';
+  coordinates: number[][];
+  targetClasses: string[];
+  severity: AlertSeverity;
+  enabled: boolean;
+  cooldownSeconds: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface DetectionBox {

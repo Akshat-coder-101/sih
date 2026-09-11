@@ -2,100 +2,145 @@ import React from 'react';
 import { useApp } from '../../context/AppContext';
 
 export const AiPipeline: React.FC = () => {
-  const { webcamActive } = useApp();
+  const { webcamActive, metrics, cams, telemetryFreshness } = useApp();
+
+  const positiveLatencies = metrics
+    ? Object.values(metrics.cameraTelemetry)
+        .map(t => t.inferenceLatencyMs)
+        .filter((lat): lat is number => typeof lat === 'number' && lat > 0)
+    : [];
+
+  const averageLatency = positiveLatencies.length > 0
+    ? Math.round(positiveLatencies.reduce((a, b) => a + b, 0) / positiveLatencies.length)
+    : null;
+
+  const totalWorkerFps = metrics
+    ? Object.values(metrics.cameraTelemetry).reduce((sum, item) => sum + (item.fps || 0), 0)
+    : 0;
+  const metadataFps = cams.reduce((sum, cam) => sum + (cam.online ? cam.fps : 0), 0);
+  const activeFps = metrics ? totalWorkerFps : metadataFps;
+
+  const stage1Prov = telemetryFreshness === 'stale'
+    ? 'Telemetry Stale'
+    : telemetryFreshness === 'unavailable'
+    ? 'Telemetry Unavailable'
+    : (averageLatency !== null && averageLatency > 0)
+    ? 'Live Telemetry'
+    : metrics
+    ? 'Telemetry Idle'
+    : webcamActive
+    ? 'Browser WebGL'
+    : 'Metadata Fallback';
+
+  const stage1Fps = metrics
+    ? `${activeFps} fps (Worker telemetry)`
+    : webcamActive
+    ? 'Variable (Browser MediaStream)'
+    : `${metadataFps} fps (Camera metadata)`;
 
   const models = [
     {
-      stage: 'Stage 1 (Active on CAM-01)',
-      name: 'TensorFlow.js COCO-SSD / MobileNetV2',
-      desc: 'Real-time human, weapon proxy & object detection running fully client-side on browser webcam frames',
+      stage: 'Stage 1 · Edge Core',
+      name: 'YOLOv8n / TensorFlow.js COCO-SSD',
+      desc: 'Real-time human, weapon, and vehicle detector running continuous inference on frame streams',
       icon: 'ti-scan',
-      lat: '~12ms',
-      fps: webcamActive ? '30 fps (Webcam Live)' : 'Standby / Simulated',
-      active: true
+      lat: averageLatency === null ? 'n/a' : `${averageLatency}ms`,
+      fps: stage1Fps,
+      active: true,
+      prov: stage1Prov
     },
     {
-      stage: 'Stage 2',
-      name: 'ByteTrack / DeepSORT Tracker',
-      desc: 'Multi-object Kalman filter tracking — builds continuous tracklets and directional velocity vectors',
+      stage: 'Stage 2 · Kinematics',
+      name: 'ByteTrack Multi-Object Tracker',
+      desc: 'Kalman filter bounding-box association — maintains consistent trajectory IDs across occlusions',
       icon: 'ti-route',
-      lat: '~2ms',
-      fps: 'CPU-light',
-      active: true
+      lat: 'n/a',
+      fps: metrics ? `${metrics.cameraWorkers} active worker(s)` : 'Telemetry unavailable',
+      active: true,
+      prov: metrics ? 'Active Tracking' : 'Metadata Fallback'
     },
     {
-      stage: 'Stage 3a',
-      name: 'Virtual Boundary & Loitering Rules Engine',
+      stage: 'Stage 3a · Boundary Rules',
+      name: 'Virtual Perimeter & Dwell Engine',
       desc: 'Polygon geometry line-crossing checks and dwell time analytics (4s+ stationary trigger)',
       icon: 'ti-fence',
-      lat: '<1ms',
-      fps: 'Rule-based',
-      active: true
+      lat: 'n/a',
+      fps: 'Continuous Rule Evaluation',
+      active: true,
+      prov: 'Deterministic Rule Engine'
     },
     {
-      stage: 'Stage 3b',
+      stage: 'Stage 3b · Biometrics (Planned)',
       name: 'RetinaFace + ArcFace Matcher',
-      desc: 'Forensic face detection & embedding matching against authorized watchlist — triggered on person detections',
+      desc: 'Watchlist embedding matching triggered only when approved by sector governance policy',
       icon: 'ti-fingerprint',
-      lat: '~18ms',
-      fps: 'On-trigger',
-      active: false
+      lat: 'n/a',
+      fps: 'On-Demand Trigger',
+      active: false,
+      prov: 'Governance Gated'
     },
     {
-      stage: 'Stage 3c',
-      name: 'PaddleOCR / ANPR Engine',
+      stage: 'Stage 3c · Checkpoint ANPR (Planned)',
+      name: 'PaddleOCR / License Plate Localizer',
       desc: 'High-speed number plate localization & character recognition for approach road checkpoints',
       icon: 'ti-license',
-      lat: '~22ms',
-      fps: 'On-trigger',
-      active: false
+      lat: 'n/a',
+      fps: 'On-Demand Trigger',
+      active: false,
+      prov: 'Governance Gated'
     },
     {
-      stage: 'Stage 3d',
+      stage: 'Stage 3d · Low-Light Enhancement',
       name: 'Zero-DCE Low-Light Enhancer',
       desc: 'Zero-reference deep curve estimation for tactical low-light and infrared camera streams',
       icon: 'ti-moon',
-      lat: '~5ms',
-      fps: 'On low-light',
-      active: false
+      lat: 'n/a',
+      fps: 'Night Sensor Active',
+      active: false,
+      prov: 'Hardware Mode'
     },
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto p-[24px]">
-      <div className="flex items-center justify-between mb-[22px]">
+    <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-ink-950">
+      <div className="flex items-center justify-between mb-5">
         <div>
-          <div className="text-[18px] font-[800] tracking-[-0.4px] text-tx">AI Inference Pipeline</div>
-          <div className="text-[11.5px] text-tx3 mt-[1px]">Cascaded AI pipeline — continuous edge detection with on-demand forensic models</div>
+          <h1 className="text-lg md:text-xl font-bold font-display tracking-tight text-rind-100">AI Inference Pipeline Architecture</h1>
+          <p className="text-xs text-rind-500 mt-0.5">Cascaded edge detection pipeline with on-demand forensic analysis and honest model provenance</p>
         </div>
       </div>
 
-      <div className="bg-s2 border border-b1 rounded-rad p-[20px] divide-y divide-b1">
+      <div className="bg-ink-900 border border-rind-500/15 rounded-rad p-4 md:p-5 divide-y divide-rind-500/10 shadow-sm">
         {models.map((m, idx) => (
-          <div key={idx} className="flex items-center gap-[16px] py-[18px] first:pt-0 last:pb-0">
-            <div className={`w-[46px] h-[46px] rounded-[10px] shrink-0 flex items-center justify-center text-[22px] border ${
-              m.active ? 'bg-cyan-d text-cyan border-cyan/25 shadow-[0_0_12px_rgba(0,229,184,0.15)]' : 'bg-s3 text-tx3 border-b1'
+          <div key={idx} className="flex items-center gap-3.5 py-4 first:pt-0 last:pb-0 flex-wrap sm:flex-nowrap">
+            <div className={`w-11 h-11 rounded-rad3 shrink-0 flex items-center justify-center text-xl border ${
+              m.active ? 'bg-instrument-d text-instrument-400 border-instrument-400/30 shadow-[0_0_12px_rgba(86,199,217,0.15)]' : 'bg-ink-800 text-rind-500 border-rind-500/15'
             }`}>
               <i className={`ti ${m.icon}`}></i>
             </div>
 
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-[8px] mb-[2px]">
-                <div className="text-[13.5px] font-[700] text-tx font-mono">{m.name}</div>
-                {m.active && (
-                  <span className="text-[8.5px] font-bold uppercase tracking-wider bg-cyan-dd text-cyan border border-cyan/30 px-[6px] py-[1px] rounded-full">
-                    Active
+              <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                <div className="text-xs md:text-sm font-bold text-rind-100 font-mono">{m.name}</div>
+                {m.active ? (
+                  <span className="text-[8.5px] font-bold uppercase tracking-wider bg-leaf-900 text-leaf-500 border border-leaf-500/30 px-1.5 py-0.5 rounded-full">
+                    Production Active
+                  </span>
+                ) : (
+                  <span className="text-[8.5px] font-bold uppercase tracking-wider bg-ink-800 text-rind-500 border border-rind-500/20 px-1.5 py-0.5 rounded-full">
+                    Stage Planned
                   </span>
                 )}
               </div>
-              <div className="text-[11.5px] text-tx3">{m.desc}</div>
-              <div className="flex gap-[16px] mt-[6px]">
-                <span className="text-[10.5px] text-tx4">Latency: <strong className="text-cyan font-mono">{m.lat}</strong></span>
-                <span className="text-[10.5px] text-tx4">Throughput: <strong className="text-cyan font-mono">{m.fps}</strong></span>
+              <div className="text-xs text-rind-500 leading-relaxed">{m.desc}</div>
+              <div className="flex gap-4 mt-1.5 flex-wrap">
+                <span className="text-[10.5px] text-rind-500">Latency: <strong className="text-instrument-400 font-mono">{m.lat}</strong></span>
+                <span className="text-[10.5px] text-rind-500">Throughput: <strong className="text-instrument-400 font-mono">{m.fps}</strong></span>
+                <span className="text-[10.5px] text-rind-600 font-mono">({m.prov})</span>
               </div>
             </div>
 
-            <div className="text-[9px] font-[700] tracking-[0.5px] uppercase px-[10px] py-[3px] rounded-[20px] bg-s3 text-tx3 border border-b1 shrink-0">
+            <div className="text-[9px] font-bold tracking-wider uppercase px-2.5 py-1 rounded-full bg-ink-800 text-rind-500 border border-rind-500/15 shrink-0 self-start sm:self-center">
               {m.stage}
             </div>
           </div>
@@ -104,3 +149,4 @@ export const AiPipeline: React.FC = () => {
     </div>
   );
 };
+

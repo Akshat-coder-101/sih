@@ -216,13 +216,26 @@ Runs as an asynchronous background worker continuously evaluating incoming telem
 
 ---
 
-### E. Cryptographic Ledger (`ledger.py`)
+### E. 3-Tier Cryptographic Ledger Architecture
 
-IBVAP implements an immutable, blockchain-style hash chain:
-- **Hashing Formula:**
-  $$\text{Record Hash}_n = \text{SHA-256}(\text{Record Hash}_{n-1} + \text{alert\_id} + \text{cam\_id} + \text{type} + \text{sev} + \text{ts})$$
-- If any attacker modifies a past alert directly in the database (e.g., altering a timestamp or changing severity), the hash chain breaks from that record forward.
-- The `/ledger/verify` endpoint recalculates all hashes from genesis to head, pinpointing the exact compromised record if tampering occurs.
+IBVAP implements an immutable, zero-trust cryptographic chain of custody across three distinct tiers:
+
+1. **Tier 1: Local Append-Only SHA-256 Hash Chain (`ledger.py`)**
+   - **Hashing Formula:**
+     $$\text{Record Hash}_n = \text{SHA-256}(\text{Record Hash}_{n-1} + \text{alert\_id} + \text{payload\_hash} + \text{ts})$$
+   - If any attacker modifies a past alert directly in the database (e.g., altering a timestamp or changing severity), the hash chain breaks from that record forward.
+   - The `/ledger/verify` endpoint recalculates all hashes from genesis to head, pinpointing the exact compromised record if tampering occurs.
+
+2. **Tier 2: Pairwise Merkle Engine & AI Model Provenance (`merkle_engine.py`, `provenance_service.py`)**
+   - Computes deterministic binary Merkle trees over alert sequence ranges, generating compact $O(\log N)$ inclusion proofs for independent verification via `GET /alerts/{id}/merkle-proof` and `POST /ledger/proof/verify`.
+   - **AI Model Provenance:** Binds the cryptographic SHA-256 hash of the exact YOLOv8 detector weights (`model_artifact_hash`), ONNX runtime version, and active spatial rule coordinates to every leaf record, cryptographically proving which model and rules produced the detection.
+
+3. **Tier 3: 2-of-3 Multisignature External Blockchain Anchoring (`multisig_service.py`, `contracts/LedgerAnchor.sol`)**
+   - Proposes Merkle roots to external Ethereum/EVM smart contracts with a 2-of-3 multisig threshold policy using domain separator `IBVAP_ANCHOR_PROPOSAL_V1`.
+   - Requires cryptographic signatures from distinct Admin and Supervisor roles before executing on-chain transactions.
+   - **Off-Chain Privacy:** Zero surveillance video, snapshots, GPS coordinates, or PII are committed on-chain. Only sequence ranges, roots, and block timestamps are stored.
+
+> For complete technical requirements, see [docs/PRODUCT_PRD.md](docs/PRODUCT_PRD.md).
 
 ---
 

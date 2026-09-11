@@ -10,7 +10,11 @@
 
 The architecture converts raw, unmanaged RTSP CCTV video feeds into prioritized, contextualized, and actionable security alerts using a high-throughput cascaded AI pipeline, spatial-temporal rules engine, and an automated chain-of-custody evidence vault.
 
-> 📖 **Full System Documentation:** See [documentation.md](documentation.md) for an in-depth walkthrough of all website components, AI modules, and operational workflows.
+> 📖 **Authoritative Specifications & Documentation:**
+> - [Authoritative Product PRD](docs/PRODUCT_PRD.md): The consolidated, single source of truth for the IBVAP platform, covering all 27 technical architecture sections, stable FR IDs, AI model provenance, and acceptance criteria.
+> - [PRD Changelog & Evolution](docs/PRD_CHANGELOG.md): Complete audit trail detailing how 10 previous PRD iterations evolved into the canonical baseline.
+> - [Full System Architecture Guide](documentation.md): In-depth operational walkthrough of website components, AI modules, and API services.
+> - [Step-by-Step Testing & Verification Guide](testing_guide.md): Hands-on testing guide for live webcam AI detection, night vision, and forensic ledger audits.
 
 ---
 
@@ -22,11 +26,12 @@ The architecture converts raw, unmanaged RTSP CCTV video feeds into prioritized,
 
 ---
 
-## 🔒 Forensic Security & Tamper-Evident Ledger
+## 🔒 3-Tier Cryptographic Integrity & Tamper-Evident Ledger
 
+- **Tier 1 (Local SHA-256 Hash-Chain):** Every alert and review event is cryptographically linked to the previous event hash, providing immediate local tamper-evidence in SQLite/PostgreSQL.
+- **Tier 2 (Deterministic Merkle Proofs & AI Model Provenance):** Computes binary pairwise Merkle trees yielding $O(\log N)$ inclusion proofs for individual alert verification without exposing the database. Binds the exact cryptographic SHA-256 hash of YOLOv8 detector weights, runtime versions, and spatial polygon rule coordinates to every leaf.
+- **Tier 3 (2-of-3 Multisignature Blockchain Anchoring):** Batches alert ranges and commits cryptographic Merkle roots to Ethereum/EVM smart contracts (`contracts/LedgerAnchor.sol`) via a 2-of-3 multisig policy (`IBVAP_ANCHOR_PROPOSAL_V1`) signed by Admin and Supervisor keys. Zero surveillance imagery or GPS coordinates ever touch the blockchain.
 - **AES-256-GCM Encryption:** High-resolution snapshots and incident details are encrypted at rest using AES-256-GCM before writing to the database.
-- **SHA-256 Hash-Chain Ledger:** Every security event is cryptographically linked to the previous event hash, providing an immutable audit trail.
-- **Log Integrity Verification:** Operators and supervisors can click **"Verify Log Integrity"** in the Alerts Log to cryptographically audit the entire incident database.
 
 ---
 

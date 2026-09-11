@@ -9,3 +9,6 @@ python-multipart==0.0.32
 SQLAlchemy==2.0.52
 uvicorn==0.52.4
 websockets==17.1
+opencv-python-headless
+numpy
+onnxruntime

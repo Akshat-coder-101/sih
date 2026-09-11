@@ -29,5 +29,17 @@ class ConnectionManager:
         for ws in dead:
             self.disconnect(ws)
 
+    async def broadcast_telemetry(self, telemetry_dict: dict):
+        """Push real-time worker telemetry updates directly over WebSocket to connected dashboards."""
+        dead = []
+        payload = json.dumps({"event": "telemetry_update", "data": telemetry_dict}, default=str)
+        for ws in self.active:
+            try:
+                await ws.send_text(payload)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(ws)
+
 
 manager = ConnectionManager()

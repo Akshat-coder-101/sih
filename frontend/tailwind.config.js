@@ -7,52 +7,107 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: '#060a0f',
-        s0: '#080d14',
-        s1: '#0b1118',
-        s2: '#0f1822',
-        s3: '#14202e',
-        s4: '#1a2a3c',
+        // Watermelon Command Tokens
+        ink: {
+          950: '#101313',
+          900: '#171b1a',
+          850: '#1c2220',
+          800: '#202624',
+          700: '#293430',
+        },
+        rind: {
+          100: '#f2f5ee',
+          200: '#d9e0d6',
+          300: '#b6c1b7',
+          500: '#718077',
+          600: '#4e5a53',
+        },
+        melon: {
+          DEFAULT: '#ff6b5f',
+          500: '#ff6b5f',
+          600: '#e84d52',
+          700: '#c7383d',
+          d: 'rgba(255, 107, 95, 0.12)',
+          dd: 'rgba(255, 107, 95, 0.06)',
+          glow: 'rgba(255, 107, 95, 0.22)',
+        },
+        seed: {
+          950: '#241217',
+          900: '#351d24',
+          800: '#4d242f',
+        },
+        leaf: {
+          DEFAULT: '#65d68b',
+          500: '#65d68b',
+          600: '#4cb870',
+          900: '#193126',
+          d: 'rgba(101, 214, 139, 0.12)',
+          dd: 'rgba(101, 214, 139, 0.06)',
+          glow: 'rgba(101, 214, 139, 0.22)',
+        },
+        instrument: {
+          DEFAULT: '#56c7d9',
+          400: '#56c7d9',
+          500: '#38b2c6',
+          d: 'rgba(86, 199, 217, 0.12)',
+          dd: 'rgba(86, 199, 217, 0.06)',
+          glow: 'rgba(86, 199, 217, 0.20)',
+        },
+        warning: {
+          DEFAULT: '#f4bd5b',
+          400: '#f4bd5b',
+          500: '#e5a538',
+          d: 'rgba(244, 189, 91, 0.12)',
+          glow: 'rgba(244, 189, 91, 0.20)',
+        },
+        // Mapped Aliases for Shell Continuity
+        bg: '#101313',
+        s0: '#131716',
+        s1: '#171b1a',
+        s2: '#202624',
+        s3: '#293430',
+        s4: '#33403c',
         cyan: {
-          DEFAULT: '#00e5b8',
-          2: '#00b896',
-          d: 'rgba(0,229,184,0.10)',
-          dd: 'rgba(0,229,184,0.05)',
-          glow: 'rgba(0,229,184,0.18)'
+          DEFAULT: '#56c7d9',
+          2: '#38b2c6',
+          d: 'rgba(86,199,217,0.12)',
+          dd: 'rgba(86,199,217,0.06)',
+          glow: 'rgba(86,199,217,0.20)'
         },
         red: {
-          DEFAULT: '#ff4757',
-          2: '#e03445',
-          d: 'rgba(255,71,87,0.12)',
-          glow: 'rgba(255,71,87,0.20)'
+          DEFAULT: '#ff6b5f',
+          2: '#e84d52',
+          d: 'rgba(255,107,95,0.12)',
+          glow: 'rgba(255,107,95,0.22)'
         },
         amber: {
-          DEFAULT: '#ffa726',
-          d: 'rgba(255,167,38,0.12)'
+          DEFAULT: '#f4bd5b',
+          d: 'rgba(244,189,91,0.12)'
         },
         blue: {
-          DEFAULT: '#4dabf7',
-          d: 'rgba(77,171,247,0.12)'
+          DEFAULT: '#56c7d9',
+          d: 'rgba(86,199,217,0.12)'
         },
         violet: {
           DEFAULT: '#b197fc',
           d: 'rgba(177,151,252,0.12)'
         },
         green: {
-          DEFAULT: '#2ed573',
-          d: 'rgba(46,213,115,0.12)'
+          DEFAULT: '#65d68b',
+          d: 'rgba(101,214,139,0.12)'
         },
-        tx: '#e8eef8',
-        tx2: '#7a8fa6',
-        tx3: '#3d5068',
-        tx4: '#475669',
+        tx: '#f2f5ee',
+        tx2: '#b6c1b7',
+        tx3: '#718077',
+        tx4: '#4e5a53',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['DM Sans', 'Inter', 'system-ui', 'sans-serif'],
+        display: ['Space Grotesk', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       borderRadius: {
-        rad: '12px',
+        rad: '10px',
         rad2: '8px',
         rad3: '6px',
       }
@@ -64,20 +119,20 @@ export default {
   daisyui: {
     themes: [
       {
-        darkCommand: {
-          "primary": "#00e5b8",
-          "secondary": "#4dabf7",
-          "accent": "#b197fc",
-          "neutral": "#0f1822",
-          "base-100": "#060a0f",
-          "info": "#4dabf7",
-          "success": "#2ed573",
-          "warning": "#ffa726",
-          "error": "#ff4757",
+        watermelonCommand: {
+          "primary": "#ff6b5f",
+          "secondary": "#56c7d9",
+          "accent": "#65d68b",
+          "neutral": "#202624",
+          "base-100": "#101313",
+          "info": "#56c7d9",
+          "success": "#65d68b",
+          "warning": "#f4bd5b",
+          "error": "#e84d52",
         },
       },
     ],
-    darkTheme: "darkCommand",
+    darkTheme: "watermelonCommand",
     base: false,
   }
 }

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp, TYPE_META } from '../../context/AppContext';
 
 export const AlertsPanel: React.FC = () => {
-  const { alerts, openLightbox } = useApp();
+  const { alerts, openLightbox, updateAlertState } = useApp();
   const [filter, setFilter] = useState<string>('all');
 
   const filteredAlerts = alerts
@@ -10,7 +10,7 @@ export const AlertsPanel: React.FC = () => {
     .sort((a, b) => b.ts.getTime() - a.ts.getTime())
     .slice(0, 30);
 
-  const pendingCount = alerts.filter(a => !a.reviewed).length;
+  const pendingCount = alerts.filter(a => !a.reviewed && (a.state || 'open') === 'open').length;
   const criticalCount = alerts.filter(a => a.sev === 'high').length;
   const warningCount = alerts.filter(a => a.sev === 'med').length;
 
@@ -34,26 +34,26 @@ export const AlertsPanel: React.FC = () => {
   ];
 
   return (
-    <div className="w-[330px] min-w-[330px] bg-s1 border-l border-b1 flex flex-col overflow-hidden select-none">
+    <div className="w-full md:w-[320px] md:min-w-[320px] h-[40vh] md:h-auto bg-ink-900 border-t md:border-t-0 md:border-l border-rind-500/15 flex flex-col overflow-hidden select-none">
       {/* Header */}
-      <div className="p-[13px] px-[14px] pb-[10px] border-b border-b1 shrink-0">
-        <div className="flex items-center gap-[8px] mb-[8px]">
-          <span className="text-[12.5px] font-[700] text-tx flex-1">Live Alerts</span>
-          <span className="text-[9.5px] font-[700] bg-red-d text-red border border-red/20 px-[9px] py-[2px] rounded-[20px]">
-            {pendingCount} pending
+      <div className="p-3 px-3.5 pb-2.5 border-b border-rind-500/15 shrink-0 bg-ink-850">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs font-bold font-display text-rind-100 flex-1">Live Alert Stream</span>
+          <span className="text-[9.5px] font-bold bg-melon-d text-melon-500 border border-melon-500/25 px-2 py-0.5 rounded-full">
+            {pendingCount} open
           </span>
         </div>
 
         {/* Filter Pills */}
-        <div className="flex gap-[4px] flex-wrap">
+        <div className="flex gap-1 flex-wrap">
           {filterButtons.map(fb => (
             <button
               key={fb.id}
               onClick={() => setFilter(fb.id)}
-              className={`text-[9.5px] px-[9px] py-[3px] rounded-[20px] border transition-all duration-150 cursor-pointer ${
+              className={`text-[9.5px] px-2 py-0.5 rounded-full border transition-all cursor-pointer ${
                 filter === fb.id
-                  ? 'bg-cyan-d text-cyan border-cyan/30 font-semibold'
-                  : 'border-b1 bg-transparent text-tx3 hover:text-tx2 hover:border-b2'
+                  ? 'bg-instrument-d text-instrument-400 border-instrument-400/30 font-semibold'
+                  : 'border-rind-500/20 bg-transparent text-rind-500 hover:text-rind-200 hover:border-rind-500/40'
               }`}
             >
               {fb.label}
@@ -63,65 +63,83 @@ export const AlertsPanel: React.FC = () => {
       </div>
 
       {/* Alerts List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto divide-y divide-rind-500/10">
         {filteredAlerts.length > 0 ? (
           filteredAlerts.map(a => {
             const meta = TYPE_META[a.type] || TYPE_META.intrusion;
             const isNew = Date.now() - a.ts.getTime() < 60000;
+            const currentState = a.state || (a.reviewed ? 'resolved' : 'open');
+            const isDetector = (a.provenance || 'detector') === 'detector';
             return (
               <div
                 key={a.id}
                 onClick={() => openLightbox(a.id)}
-                className={`flex gap-[10px] p-[10px] px-[12px] border-b border-b0 cursor-pointer transition-colors duration-100 hover:bg-s2 ${
-                  isNew ? 'border-l-2 border-l-red' : ''
+                className={`flex gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-100 hover:bg-ink-800 ${
+                  isNew ? 'border-l-2 border-l-melon-500 bg-melon-dd' : ''
                 }`}
               >
                 {/* Icon or Real Thumbnail */}
                 {a.snapshot ? (
-                  <div className="w-[38px] h-[38px] rounded-[9px] shrink-0 overflow-hidden border border-red/40 relative">
+                  <div className="w-9 h-9 rounded-rad3 shrink-0 overflow-hidden border border-melon-500/40 relative">
                     <img src={a.snapshot} alt="Captured" className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-red-d/30 flex items-center justify-center">
-                      <i className="ti ti-camera text-[12px] text-white drop-shadow"></i>
+                    <div className="absolute inset-0 bg-melon-d flex items-center justify-center">
+                      <i className="ti ti-camera text-xs text-rind-100 drop-shadow"></i>
                     </div>
                   </div>
                 ) : (
-                  <div className={`w-[38px] h-[38px] rounded-[9px] shrink-0 flex items-center justify-center text-[16px] border ${meta.cls}`}>
+                  <div className={`w-9 h-9 rounded-rad3 shrink-0 flex items-center justify-center text-sm border ${
+                    a.sev === 'high' ? 'bg-melon-d text-melon-500 border-melon-500/30' : 'bg-instrument-d text-instrument-400 border-instrument-400/30'
+                  }`}>
                     <i className={`ti ${meta.icon}`}></i>
                   </div>
                 )}
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-[5px] mb-[3px]">
-                    <span className={`text-[8.5px] font-[700] tracking-[0.5px] uppercase px-[7px] py-[2px] rounded-[4px] border ${meta.cls}`}>
+                  <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                    <span className={`text-[8.5px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded border ${
+                      a.sev === 'high' ? 'bg-melon-d text-melon-500 border-melon-500/30' : 'bg-instrument-d text-instrument-400 border-instrument-400/30'
+                    }`}>
                       {a.type}
                     </span>
-                    <span className={`text-[9px] font-[700] px-[7px] py-[2px] rounded-[4px] ml-auto ${
-                      a.sev === 'high' ? 'bg-red-d text-red' : a.sev === 'med' ? 'bg-amber-d text-amber' : 'bg-blue-d text-blue'
+                    <span className={`text-[8px] font-bold px-1 py-0.5 rounded uppercase ${
+                      isDetector ? 'bg-leaf-900 text-leaf-500 border border-leaf-500/30' : 'bg-ink-800 text-rind-500 border border-rind-500/20'
                     }`}>
-                      {a.sev === 'high' ? 'CRITICAL' : a.sev === 'med' ? 'WARNING' : 'INFO'}
+                      {isDetector ? 'AI' : 'SIM'}
+                    </span>
+                    <span className={`text-[8.5px] font-bold px-1.5 py-0.5 rounded ml-auto ${
+                      a.sev === 'high' ? 'bg-melon-d text-melon-500' : a.sev === 'med' ? 'bg-warning-d text-warning-400' : 'bg-instrument-d text-instrument-400'
+                    }`}>
+                      {a.sev === 'high' ? 'CRITICAL' : a.sev === 'med' ? 'WARN' : 'INFO'}
                     </span>
                   </div>
 
-                  <div className="text-[10.5px] text-tx2 truncate mb-[2px] font-medium" title={a.detail}>
+                  <div className="text-[10.5px] text-rind-200 truncate mb-0.5 font-medium" title={a.detail}>
                     {a.detail}
                   </div>
 
-                  <div className="text-[10px] text-tx3 truncate mb-[2px] flex items-center gap-[4px] flex-wrap">
+                  <div className="text-[10px] text-rind-500 truncate mb-0.5 flex items-center gap-1.5 flex-wrap">
                     <span>{a.camName.split('·')[0].trim()}</span>
                     {a.snapshot && (
-                      <span className="text-[9px] text-cyan font-mono font-bold flex items-center gap-[2px]">
-                        <i className="ti ti-photo text-[10px]"></i> frame captured
+                      <span className="text-[8.5px] text-instrument-400 font-mono font-bold flex items-center gap-0.5">
+                        <i className="ti ti-photo text-[9px]"></i> snap
                       </span>
                     )}
-                    {a.sev === 'high' && (
-                      <span className="text-[8.5px] text-[#38d9a9] font-mono font-bold flex items-center gap-[2px] bg-[#092b20] border border-[#38d9a9]/40 px-[4px] py-[0.5px] rounded" title="Alert dispatched to Command and Control (C2) Tactical Network">
-                        <i className="ti ti-broadcast text-[9px]"></i> C2 Relay: Sent ✓
-                      </span>
+                    {currentState === 'open' ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateAlertState(a.id, 'acknowledged');
+                        }}
+                        className="ml-auto text-[8.5px] font-bold text-warning-400 bg-warning-d hover:bg-warning-500/20 px-1.5 py-0.5 rounded border border-warning-400/30 transition-colors"
+                      >
+                        Ack
+                      </button>
+                    ) : (
+                      <span className="text-leaf-500 text-[8.5px] font-semibold ml-auto">✓ {currentState}</span>
                     )}
-                    {a.reviewed && <span className="text-cyan text-[9px] ml-auto">✓ reviewed</span>}
                   </div>
 
-                  <div className="text-[9px] text-tx4 font-mono">
+                  <div className="text-[9px] text-rind-600 font-mono">
                     {timeAgo(a.ts)}
                   </div>
                 </div>
@@ -129,30 +147,29 @@ export const AlertsPanel: React.FC = () => {
             );
           })
         ) : (
-          <div className="p-[40px] text-center text-tx3 flex flex-col items-center justify-center gap-[8px]">
-            <i className="ti ti-mood-empty text-[28px] opacity-40"></i>
-            <span>No alerts for this filter</span>
+          <div className="p-8 text-center text-rind-500 flex flex-col items-center justify-center gap-2">
+            <i className="ti ti-inbox text-2xl opacity-40"></i>
+            <span className="text-xs">No alerts matching filter</span>
           </div>
         )}
       </div>
 
       {/* Footer Summary */}
-      <div className="p-[10px] px-[12px] border-t border-b1 shrink-0 grid grid-template grid-cols-3 gap-[6px]">
-        <div className="text-center p-[7px] px-[4px] rounded-rad3 bg-s2 border border-b0">
-          <div className="text-[20px] font-[800] leading-none font-mono text-red">{criticalCount}</div>
-          <div className="text-[8px] text-tx3 tracking-[1px] uppercase mt-[2px]">Critical</div>
+      <div className="p-2.5 px-3 border-t border-rind-500/15 shrink-0 grid grid-cols-3 gap-1.5 bg-ink-950/60">
+        <div className="bg-ink-800 p-1.5 rounded-rad3 text-center border border-rind-500/10">
+          <div className="text-[8.5px] text-rind-500 font-mono">CRITICAL</div>
+          <div className="text-xs font-bold text-melon-500">{criticalCount}</div>
         </div>
-
-        <div className="text-center p-[7px] px-[4px] rounded-rad3 bg-s2 border border-b0">
-          <div className="text-[20px] font-[800] leading-none font-mono text-amber">{warningCount}</div>
-          <div className="text-[8px] text-tx3 tracking-[1px] uppercase mt-[2px]">Warning</div>
+        <div className="bg-ink-800 p-1.5 rounded-rad3 text-center border border-rind-500/10">
+          <div className="text-[8.5px] text-rind-500 font-mono">WARNING</div>
+          <div className="text-xs font-bold text-warning-400">{warningCount}</div>
         </div>
-
-        <div className="text-center p-[7px] px-[4px] rounded-rad3 bg-s2 border border-b0">
-          <div className="text-[20px] font-[800] leading-none font-mono text-cyan">{alerts.length}</div>
-          <div className="text-[8px] text-tx3 tracking-[1px] uppercase mt-[2px]">Today</div>
+        <div className="bg-ink-800 p-1.5 rounded-rad3 text-center border border-rind-500/10">
+          <div className="text-[8.5px] text-rind-500 font-mono">TOTAL</div>
+          <div className="text-xs font-bold text-rind-100">{alerts.length}</div>
         </div>
       </div>
     </div>
   );
 };
+

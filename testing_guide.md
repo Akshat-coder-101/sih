@@ -86,15 +86,30 @@ For quick demonstrations without holding a physical object:
 
 ---
 
-## 🛡️ Step 6: Test SHA-256 Tamper-Evident Ledger Integrity
+## 🛡️ Step 6: Test 3-Tier Cryptographic Ledger Integrity
 
-IBVAP chains every incident into an immutable cryptographic hash chain to prevent unauthorized tampering.
+IBVAP chains every incident into an immutable cryptographic framework to prevent unauthorized tampering.
 
+### A. Local SHA-256 Hash Chain Verification
 1. In the left sidebar, navigate to **`Alerts Log`**.
 2. Click the cyan **`Verify Log Integrity`** button in the top right.
 3. A modal opens showing the ledger audit:
    * The server walks and re-hashes every record from genesis to head.
    * Confirms **`Ledger Intact`** and displays the count of verified records.
+
+### B. Deterministic Merkle Inclusion Proof & AI Model Provenance
+1. Click on any alert in the **Alerts Log**.
+2. Notice the **AI Model Provenance** section displaying:
+   * Model Artifact SHA-256 hash (verifying untampered neural network weights).
+   * Active rule coordinate configuration hash.
+   * Runtime execution engine (e.g. `onnxruntime-cpu`).
+3. Click **"Verify Merkle Proof"** (or execute `GET /alerts/{id}/merkle-proof`):
+   * Calculates the binary Merkle inclusion path to the batch root.
+   * Demonstrates independent $O(\log N)$ mathematical proof of existence without exposing full database contents.
+
+### C. 2-of-3 Multisignature Blockchain Anchoring
+1. Query active on-chain anchors via `GET /anchoring/status`.
+2. Inspect the confirmed EVM block number, transaction hash, and sequence interval committed by Admin and Supervisor signature threshold consensus.
 
 ---
 

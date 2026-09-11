@@ -1,13 +1,14 @@
 import os
 import base64
 import json
+import secrets
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from jose import jwt, JWTError
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, WebSocket
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -15,9 +16,7 @@ from .database import get_db
 from . import models
 
 # ---------------------------------------------------------------------------
-# AES-256-GCM at-rest encryption (FR-9.3). Key comes from env in real deploy;
-# a fixed dev key is generated on first run and written to .aes_key for the
-# prototype so restarts don't invalidate previously-encrypted rows.
+# AES-256-GCM at-rest encryption & Key Rotation (FR-6.1, FR-6.5)
 # ---------------------------------------------------------------------------
 _KEY_PATH = os.path.join(os.path.dirname(__file__), "..", ".aes_key")
 
@@ -32,36 +31,63 @@ def _load_or_create_key() -> bytes:
     return key
 
 
-_AES_KEY = os.getenv("IBVAP_AES_KEY_B64")
-_AES_KEY = base64.b64decode(_AES_KEY) if _AES_KEY else _load_or_create_key()
-_aesgcm = AESGCM(_AES_KEY)
+_V1_AES_KEY = os.getenv("IBVAP_AES_KEY_B64")
+_V1_AES_KEY = base64.b64decode(_V1_AES_KEY) if _V1_AES_KEY else _load_or_create_key()
+
+_KEY_STORE: Dict[str, AESGCM] = {
+    "v1": AESGCM(_V1_AES_KEY)
+}
+_ACTIVE_KEY_VERSION = "v1"
 
 
-def encrypt_field(plaintext: Optional[str]) -> Optional[str]:
-    """AES-256-GCM encrypt a string field. Returns base64(nonce || ciphertext)."""
+def rotate_key(new_version: str, key_bytes: Optional[bytes] = None) -> str:
+    """Registers a new encryption key version for key rotation (FR-6.5)."""
+    global _ACTIVE_KEY_VERSION
+    if key_bytes is None:
+        key_bytes = AESGCM.generate_key(bit_length=256)
+    _KEY_STORE[new_version] = AESGCM(key_bytes)
+    _ACTIVE_KEY_VERSION = new_version
+    return new_version
+
+
+def encrypt_field(plaintext: Optional[str], key_version: Optional[str] = None) -> Optional[str]:
+    """AES-256-GCM encrypt a string field with versioned key prefix."""
     if plaintext is None:
         return None
+    ver = key_version or _ACTIVE_KEY_VERSION
+    cipher = _KEY_STORE.get(ver, _KEY_STORE["v1"])
     nonce = os.urandom(12)
-    ct = _aesgcm.encrypt(nonce, plaintext.encode("utf-8"), None)
-    return base64.b64encode(nonce + ct).decode("ascii")
+    ct = cipher.encrypt(nonce, plaintext.encode("utf-8"), None)
+    payload_b64 = base64.b64encode(nonce + ct).decode("ascii")
+    return f"{ver}:{payload_b64}"
 
 
 def decrypt_field(blob: Optional[str]) -> Optional[str]:
+    """Decrypts versioned or legacy AES-256-GCM ciphertext."""
     if blob is None:
         return None
-    raw = base64.b64decode(blob)
-    nonce, ct = raw[:12], raw[12:]
-    return _aesgcm.decrypt(nonce, ct, None).decode("utf-8")
+    try:
+        ver = "v1"
+        data_b64 = blob
+        if ":" in blob:
+            parts = blob.split(":", 1)
+            if parts[0] in _KEY_STORE:
+                ver, data_b64 = parts[0], parts[1]
+
+        cipher = _KEY_STORE.get(ver, _KEY_STORE["v1"])
+        raw = base64.b64decode(data_b64)
+        nonce, ct = raw[:12], raw[12:]
+        return cipher.decrypt(nonce, ct, None).decode("utf-8")
+    except Exception:
+        return "[ENCRYPTED DATA - UNABLE TO DECRYPT]"
 
 
 # ---------------------------------------------------------------------------
-# Password hashing + JWT  (FR-9.2)
+# Password hashing + JWT + Multi-Site RBAC (FR-1, FR-2, FR-6)
 # ---------------------------------------------------------------------------
-# pbkdf2_sha256 avoids the passlib/bcrypt backend version-detection breakage
-# that's common in fresh environments; swap to bcrypt in production if you
-# pin compatible passlib/bcrypt versions.
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
+ENV = os.getenv("IBVAP_ENV", "development").lower()
 SECRET_KEY = os.getenv("IBVAP_JWT_SECRET", "dev-only-change-me-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 8
@@ -71,7 +97,18 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_MINUTES = 10
 
-ROLE_HIERARCHY = {"operator": 1, "supervisor": 2, "admin": 3}
+ROLE_HIERARCHY = {"operator": 1, "supervisor": 2, "admin": 3, "service_account": 1}
+
+
+def validate_production_config():
+    """FR-6.1 / V4-06: Production startup fails if critical secrets or configs are unsafe."""
+    if ENV == "production":
+        if not SECRET_KEY or SECRET_KEY == "dev-only-change-me-in-production" or len(SECRET_KEY) < 24:
+            raise RuntimeError("CRITICAL SECURITY ERROR: IBVAP_JWT_SECRET must be set to a strong secret in production (minimum 24 chars).")
+        if not os.getenv("IBVAP_AES_KEY_B64"):
+            raise RuntimeError("CRITICAL SECURITY ERROR: IBVAP_AES_KEY_B64 must be explicitly configured in production environment.")
+        if os.getenv("IBVAP_C2_SECRET", "ibvap-tactical-c2-shared-key") == "ibvap-tactical-c2-shared-key":
+            raise RuntimeError("CRITICAL SECURITY ERROR: IBVAP_C2_SECRET must be set to a unique production shared key.")
 
 
 def hash_password(password: str) -> str:
@@ -82,65 +119,113 @@ def verify_password(password: str, hashed: str) -> bool:
     return pwd_context.verify(password, hashed)
 
 
-def create_access_token(username: str, role: str) -> str:
+def resolve_user_site_ids(db: Session, user: models.User) -> List[str]:
+    """FR-1.2 / V6-01: Dynamically resolves active site memberships for user from database."""
+    if user.role == "admin":
+        return ["*"]
+
+    memberships = db.query(models.SiteMembership).filter(
+        models.SiteMembership.user_id == user.id,
+        models.SiteMembership.status == "active"
+    ).all()
+
+    if not memberships:
+        return ["site-alpha"]  # Default base site if no explicit assignment
+    return [m.site_id for m in memberships]
+
+
+def create_access_token(username: str, role: str, site_ids: Optional[List[str]] = None) -> str:
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    payload = {"sub": username, "role": role, "exp": expire}
+    assigned_sites = site_ids if site_ids is not None else ["*"]
+    payload = {
+        "sub": username,
+        "role": role,
+        "site_ids": assigned_sites,
+        "exp": expire
+    }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
-    credentials_exc = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    if token is None:
-        raise credentials_exc
+def validate_token(token: Optional[str]) -> Dict[str, Any]:
+    """Validates JWT token and returns payload dict. Raises HTTPException 401 on failure."""
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication token is missing",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
-            raise credentials_exc
-    except JWTError:
-        raise credentials_exc
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token claims: subject missing",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return payload
+    except JWTError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Token validation failed: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
+
+def validate_site_access(payload: Dict[str, Any], site_id: str) -> bool:
+    """FR-2.3 / V5-04: Enforces site-scoped authorization matrix."""
+    allowed_sites = payload.get("site_ids", ["*"])
+    if "*" in allowed_sites or site_id in allowed_sites:
+        return True
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=f"Access denied: Subject '{payload.get('sub')}' is not authorized for site '{site_id}'."
+    )
+
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
+    payload = validate_token(token)
+    username = payload.get("sub")
     user = db.query(models.User).filter(models.User.username == username).first()
     if user is None:
-        raise credentials_exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account no longer exists",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
 
 
-def get_current_user_optional(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
-    """Returns authenticated user if token is valid, or a default operator instance if unauthenticated."""
-    if token:
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            username = payload.get("sub")
-            if username:
-                user = db.query(models.User).filter(models.User.username == username).first()
-                if user:
-                    return user
-        except Exception:
-            pass
-    # Fallback to default operator for initial dashboard load
-    return models.User(id=0, username="operator", role="operator")
-
-
 def require_role(*allowed_roles: str, allow_guest_operator: bool = False):
-    """Dependency factory for RBAC (FR-9.2). Roles are hierarchical:
-    admin > supervisor > operator, so require_role('supervisor') also
-    lets an admin through."""
-    min_level = min(ROLE_HIERARCHY[r] for r in allowed_roles)
+    """Dependency factory for RBAC (FR-1 / FR-6). Roles are hierarchical."""
+    min_level = min(ROLE_HIERARCHY.get(r, 1) for r in allowed_roles)
 
-    def checker(user: models.User = Depends(get_current_user_optional if allow_guest_operator else get_current_user)) -> models.User:
-        if ROLE_HIERARCHY.get(user.role, 0) < min_level:
+    def checker(token: Optional[str] = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> Dict[str, Any]:
+        if not token:
+            if allow_guest_operator and ENV == "test":
+                return {"sub": "test_operator", "role": "operator", "site_ids": ["*"]}
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required for this operation",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        payload = validate_token(token)
+        role = payload.get("role", "operator")
+
+        if ROLE_HIERARCHY.get(role, 0) < min_level:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Requires role >= {allowed_roles}, you are '{user.role}'",
+                detail=f"Insufficient permissions: requires role >= {allowed_roles}, your role is '{role}'",
             )
-        return user
+        return payload
 
     return checker
+
+
+def authenticate_ws_token(token: Optional[str]) -> Dict[str, Any]:
+    """FR-1.1: Validates token for WebSocket connections."""
+    return validate_token(token)
 
 
 def check_lockout(user: models.User):
@@ -148,7 +233,7 @@ def check_lockout(user: models.User):
         remaining = int((user.locked_until - datetime.utcnow()).total_seconds())
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
-            detail=f"Account locked. Try again in {remaining}s.",
+            detail=f"Account temporarily locked due to multiple failed login attempts. Try again in {remaining}s.",
         )
 
 
