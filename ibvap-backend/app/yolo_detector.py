@@ -23,7 +23,10 @@ CLASSES = [
     "toothbrush"
 ]
 
-TARGET_CLASSES = {"person", "bicycle", "car", "motorcycle", "bus", "truck", "backpack"}
+TARGET_CLASSES = {
+    "person", "bicycle", "car", "motorcycle", "bus", "truck", "backpack",
+    "knife", "scissors", "baseball bat", "fork", "spoon", "bottle", "cell phone"
+}
 
 
 class YOLODetector:
@@ -94,8 +97,11 @@ class YOLODetector:
             max_score_idx = np.argmax(classes_scores)
             confidence = classes_scores[max_score_idx]
 
-            if confidence >= self.conf_thresh:
-                class_name = CLASSES[max_score_idx] if max_score_idx < len(CLASSES) else "object"
+            class_name = CLASSES[max_score_idx] if max_score_idx < len(CLASSES) else "object"
+            is_weapon_threat = class_name in {"knife", "scissors", "baseball bat", "fork", "spoon"}
+            effective_thresh = 0.15 if is_weapon_threat else self.conf_thresh
+
+            if confidence >= effective_thresh:
                 if TARGET_CLASSES and class_name not in TARGET_CLASSES:
                     continue
 

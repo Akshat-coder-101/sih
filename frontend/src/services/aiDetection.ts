@@ -7,6 +7,11 @@ let modelPromise: Promise<cocoSsd.ObjectDetection> | null = null;
 export async function loadCocoSsdModel(): Promise<cocoSsd.ObjectDetection> {
   if (!modelPromise) {
     modelPromise = (async () => {
+      try {
+        await tf.setBackend('webgl');
+      } catch (e) {
+        console.warn('[AI] WebGL backend initialization fallback:', e);
+      }
       await tf.ready();
       return await cocoSsd.load({ base: 'mobilenet_v2' });
     })();
@@ -53,15 +58,30 @@ export function captureFrameWithBoxes(
     ctx.font = '16px "JetBrains Mono", monospace';
     ctx.fillText(`${osdMeta.timestamp}  |  ${osdMeta.geo}`, 24, vh - 24);
 
+    // Buffer Zone Line (at 54% height)
+    const bufferY = vh * 0.54;
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.75)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.moveTo(0, bufferY);
+    ctx.lineTo(vw, bufferY);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(250, 204, 21, 0.9)';
+    ctx.font = 'bold 12px "JetBrains Mono", monospace';
+    ctx.fillText('WARNING BUFFER ZONE (NEAR FENCE)', 24, bufferY - 6);
+
     // Virtual Fence line (at 74% height)
     const fenceY = vh * 0.74;
-    ctx.strokeStyle = 'rgba(255, 71, 87, 0.85)';
+    ctx.strokeStyle = 'rgba(255, 71, 87, 0.95)';
     ctx.lineWidth = 3;
     ctx.setLineDash([12, 6]);
     ctx.beginPath();
     ctx.moveTo(0, fenceY);
     ctx.lineTo(vw, fenceY);
     ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 71, 87, 0.95)';
+    ctx.fillText('VIRTUAL FENCE TRIPWIRE (INSIDE PERIMETER)', 24, fenceY - 6);
     ctx.setLineDash([]);
 
     // Bounding Boxes

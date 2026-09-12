@@ -17,6 +17,7 @@ export const CamViewport: React.FC = () => {
     isCamWebcamActive,
     telemetryFreshness,
     isFenceBreached,
+    fenceStatus,
     openFullscreen,
     triggerWeaponDemo,
     toggleCamNight,
@@ -397,15 +398,33 @@ export const CamViewport: React.FC = () => {
           <div className="absolute bottom-2.5 left-2.5 w-5 h-5 border-b-2 border-l-2 border-instrument-400 z-[4] pointer-events-none opacity-80" />
           <div className="absolute bottom-2.5 right-2.5 w-5 h-5 border-b-2 border-r-2 border-instrument-400 z-[4] pointer-events-none opacity-80" />
 
-          {/* Virtual Fence Line for the selected camera */}
+          {/* Virtual Fence Buffer Zone & Tripwire for the selected camera */}
           {cam.online && (
-            <div className={`fence-line ${isFenceBreached ? 'breach' : 'clear'}`}>
-              <span className={`absolute right-2 bottom-1 font-mono text-[8px] font-bold tracking-wider px-1.5 py-0.5 rounded ${
-                isFenceBreached ? 'bg-melon-d text-melon-500 border border-melon-500/40' : 'bg-leaf-900/80 text-leaf-500 border border-leaf-500/40'
-              }`}>
-                {isFenceBreached ? 'FENCE BREACH' : 'FENCE CLEAR'}
-              </span>
-            </div>
+            <>
+              {/* Proximity Warning Buffer Zone (54% to 74% height) */}
+              <div className={`fence-buffer-zone ${fenceStatus === 'near_warning' ? 'active' : ''}`}>
+                <span className={`absolute left-3 top-1 font-mono text-[8px] font-bold tracking-wider px-1.5 py-0.5 rounded ${
+                  fenceStatus === 'near_warning'
+                    ? 'bg-amber-950/80 text-amber-300 border border-amber-400/50 animate-pulse'
+                    : 'text-amber-300/40 font-semibold'
+                }`}>
+                  {fenceStatus === 'near_warning' ? '⚠️ SUSPICIOUS ACTIVITY NEAR FENCE (BUFFER ZONE)' : 'BUFFER ZONE (PROXIMITY)'}
+                </span>
+              </div>
+
+              {/* Main Virtual Fence Line */}
+              <div className={`fence-line ${fenceStatus === 'breach' ? 'breach' : (fenceStatus === 'near_warning' ? 'warning' : 'clear')}`}>
+                <span className={`absolute right-2 bottom-1 font-mono text-[8.5px] font-bold tracking-wider px-2 py-0.5 rounded ${
+                  fenceStatus === 'breach'
+                    ? 'bg-melon-d text-melon-500 border border-melon-500/40 animate-pulse'
+                    : (fenceStatus === 'near_warning'
+                        ? 'bg-amber-950/80 text-amber-300 border border-amber-400/50'
+                        : 'bg-leaf-900/80 text-leaf-500 border border-leaf-500/40')
+                }`}>
+                  {fenceStatus === 'breach' ? '🚨 FENCE BREACH (INSIDE)' : (fenceStatus === 'near_warning' ? '⚠️ NEAR FENCE WARNING' : '🛡️ FENCE CLEAR')}
+                </span>
+              </div>
+            </>
           )}
 
           {/* OSD Text Overlays */}

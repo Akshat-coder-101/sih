@@ -83,6 +83,7 @@ interface AppContextType {
   webcamCamId: string | null;
   isCamWebcamActive: (camId?: string | null) => boolean;
   isFenceBreached: boolean;
+  fenceStatus: 'clear' | 'near_warning' | 'breach';
   activeLightboxAlert: Alert | null;
   fullscreenCamId: string | null;
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -144,6 +145,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [readiness, setReadiness] = useState<ReadinessResponse | null>(null);
   const [latencyPingMs, setLatencyPingMs] = useState<number | null>(null);
   const [isFenceBreached, setIsFenceBreached] = useState<boolean>(false);
+  const [fenceStatus, setFenceStatus] = useState<'clear' | 'near_warning' | 'breach'>('clear');
   const [activeLightboxAlert, setActiveLightboxAlert] = useState<Alert | null>(null);
   const [fullscreenCamId, setFullscreenCamId] = useState<string | null>(null);
 
@@ -167,6 +169,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const lastIntrusionRef = useRef<number>(0);
   const lastWeaponRef = useRef<number>(0);
   const lastLoiterRef = useRef<number>(0);
+  const lastBufferLoiterRef = useRef<number>(0);
+  const bufferTrackerRef = useRef<{ firstSeen: number | null; alerted: boolean }>({
+    firstSeen: null,
+    alerted: false
+  });
+  const weaponStreakRef = useRef<number>(0);
   const loiterTrackerRef = useRef<{ firstSeen: number | null; lastSeen: number | null; center: { cx: number; cy: number } | null; alerted: boolean }>({
     firstSeen: null,
     lastSeen: null,
@@ -381,16 +389,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     async function startLoop() {
       const model = await loadCocoSsdModel();
 
+      // High-speed offscreen canvas for rapid 20-30ms inference (downsampled from HD video)
+      const offscreenCanvas = document.createElement('canvas');
+      offscreenCanvas.width = 480;
+      offscreenCanvas.height = 270;
+      const offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+
       intervalId = setInterval(async () => {
-        if (!webcamActive || isProcessing || !videoRef.current) return;
+        if (!webcamActive || isProcessing || !videoRef.current || !offscreenCtx) return;
         const video = videoRef.current;
         if (video.readyState < 2 || video.paused || video.ended) return;
 
         isProcessing = true;
         try {
-          const predictions = await model.detect(video);
-          const vw = video.videoWidth || 1280;
-          const vh = video.videoHeight || 720;
+          // Render current video frame to fast offscreen canvas
+          offscreenCtx.drawImage(video, 0, 0, 480, 270);
+
+          // Fast inference with ultra-sensitive minScore=0.04 so blades/knives trigger instantaneously
+          const predictions = await model.detect(offscreenCanvas, 25, 0.04);
 
           const boxes: DetectionBox[] = [];
           interface TrackedPerson { left: number; top: number; w: number; h: number; score: number; }
@@ -401,30 +417,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           for (const p of predictions) {
             const isPerson = p.class === 'person';
-            const isDirectKnife = ['knife', 'scissors', 'fork', 'spoon', 'dagger'].includes(p.class);
-            const isWeaponProxy = ['toothbrush', 'remote', 'cell phone', 'bottle'].includes(p.class);
-            const isWeapon = isDirectKnife || isWeaponProxy;
 
-            // Ultra-sensitive threshold for blades: 0.10 for direct knife/scissors, 0.20 for proxies, 0.35 for person
-            const minScore = isDirectKnife ? 0.10 : (isWeapon ? 0.20 : 0.35);
+            // CRITICAL FIX: In COCO-SSD, handheld knives/blades are frequently classified as 'toothbrush'
+            // due to hand grip & slender silhouette. Map 'toothbrush' directly to blade/knife!
+            const isDirectKnife = ['knife', 'scissors', 'toothbrush', 'fork', 'spoon', 'dagger'].includes(p.class);
+            const isHeavyWeapon = ['baseball bat'].includes(p.class);
+            const isFirearmProxy = ['hair drier'].includes(p.class);
+            const isWeaponProxy = ['remote', 'cell phone', 'bottle', 'umbrella'].includes(p.class);
+            const isWeapon = isDirectKnife || isHeavyWeapon || isFirearmProxy || isWeaponProxy;
+
+            // Ultra-sensitive threshold: 0.04 for blades, 0.10 for blunt/firearm, 0.18 for proxies, 0.30 for person
+            const minScore = isDirectKnife ? 0.04 : (isHeavyWeapon || isFirearmProxy ? 0.10 : (isWeapon ? 0.18 : 0.30));
             if (p.score < minScore) continue;
 
             const [bx, by, bw, bh] = p.bbox;
-            const leftPct = (bx / vw) * 100;
-            const topPct = (by / vh) * 100;
-            const wPct = (bw / vw) * 100;
-            const hPct = (bh / vh) * 100;
+            // Map 480x270 offscreen coordinates back to 0-100% viewport percentages
+            const leftPct = (bx / 480) * 100;
+            const topPct = (by / 270) * 100;
+            const wPct = (bw / 480) * 100;
+            const hPct = (bh / 270) * 100;
 
             if (isPerson) {
               detectedPerson = { left: leftPct, top: topPct, w: wPct, h: hPct, score: p.score };
             }
             if (isWeapon) {
-              detectedWeaponProxy = { class: p.class, score: p.score, left: leftPct, top: topPct, w: wPct, h: hPct };
+              // Prioritize direct blade/knife detections
+              if (!detectedWeaponProxy || isDirectKnife || detectedWeaponProxy.score < p.score) {
+                detectedWeaponProxy = { class: p.class, score: p.score, left: leftPct, top: topPct, w: wPct, h: hPct };
+              }
             }
 
-            const label = isWeapon
-              ? (isDirectKnife ? `WEAPON (KNIFE) ${(p.score).toFixed(2)}` : `WEAPON / PROXY (${p.class.toUpperCase()}) ${(p.score).toFixed(2)}`)
-              : `${p.class.toUpperCase()} ${(p.score).toFixed(2)}`;
+            let label = '';
+            if (isDirectKnife) {
+              const threatName = p.class === 'knife'
+                ? 'KNIFE / EDGED WEAPON'
+                : (p.class === 'toothbrush' ? 'BLADE / KNIFE (EDGED PROFILE)' : `${p.class.toUpperCase()} / BLADE`);
+              label = `[THREAT] WEAPON: ${threatName} ${(p.score).toFixed(2)}`;
+            } else if (isHeavyWeapon) {
+              label = `[THREAT] BLUNT WEAPON (BAT) ${(p.score).toFixed(2)}`;
+            } else if (isFirearmProxy) {
+              label = `[THREAT] FIREARM / HANDGUN PROXY ${(p.score).toFixed(2)}`;
+            } else if (isWeaponProxy) {
+              label = `[THREAT] WEAPON / PROXY (${p.class.toUpperCase()}) ${(p.score).toFixed(2)}`;
+            } else {
+              label = `${p.class.toUpperCase()} ${(p.score).toFixed(2)}`;
+            }
 
             boxes.push({
               left: Math.max(0, leftPct),
@@ -460,16 +497,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const pPerson = detectedPerson;
           const pWeapon = detectedWeaponProxy;
 
-          // 1. Threat Detection (Knife / Edged Weapon) — HIGHEST PRIORITY
+          // 1. Threat Detection (Knife / Edged Weapon / Weapon Proxy) — INSTANT TRIGGER
           if (pWeapon) {
             const nowTime = Date.now();
-            if (nowTime - lastWeaponRef.current > 3500 && armed) {
+            if (nowTime - lastWeaponRef.current > 3000 && armed) {
               lastWeaponRef.current = nowTime;
               const snap = captureFrameWithBoxes(video, boxes, osdMeta);
-              const isKnife = ['knife', 'scissors', 'fork', 'spoon'].includes(pWeapon.class);
+              const isKnife = ['knife', 'scissors', 'toothbrush', 'fork', 'spoon', 'dagger'].includes(pWeapon.class);
               const detail = isKnife
-                ? 'CRITICAL: Weapon Detected (Blade / Edged Weapon)'
-                : `CRITICAL: Weapon Threat (${pWeapon.class.toUpperCase()}) flagged by AI`;
+                ? (pWeapon.class === 'knife' || pWeapon.class === 'toothbrush'
+                    ? 'CRITICAL: Weapon Detected — Concealed Blade / Knife in Hand'
+                    : `CRITICAL: Weapon Detected — Edged Blade (${pWeapon.class.toUpperCase()})`)
+                : `CRITICAL: Weapon Threat Detected (${pWeapon.class.toUpperCase()}) flagged by AI`;
               const newAlert = mkAlert(
                 'weapon',
                 detectionCam.id,
@@ -486,40 +525,104 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
               // Immediate screen flash
               setIsFenceBreached(true);
+              setFenceStatus('breach');
               setTimeout(() => {
                 setIsFenceBreached(false);
-              }, 3500);
+                setFenceStatus('clear');
+              }, 3000);
             }
           }
-          // 2. Virtual Fence Crossing Check (Only triggers if NO weapon is detected)
+          // 2. Virtual Fence & Suspicious Activity Analysis (Near or Inside Fence)
           else if (pPerson) {
             const bottomY = pPerson.top + pPerson.h;
+            const personAspect = pPerson.w / Math.max(pPerson.h, 1);
+            const nowTime = Date.now();
+
+            // A) INSIDE THE FENCE (BREACH / INTRUSION) — bottomY >= 72%
             if (bottomY >= 72) {
               setIsFenceBreached(true);
-              const nowTime = Date.now();
-              if (nowTime - lastIntrusionRef.current > 8000 && armed) {
+              setFenceStatus('breach');
+              bufferTrackerRef.current.firstSeen = null;
+              bufferTrackerRef.current.alerted = false;
+
+              if (nowTime - lastIntrusionRef.current > 6000 && armed) {
                 lastIntrusionRef.current = nowTime;
                 const snap = captureFrameWithBoxes(video, boxes, osdMeta);
                 const newAlert = mkAlert(
                   'intrusion',
                   detectionCam.id,
                   0,
-                  'Virtual fence boundary crossed by individual (Live AI Detection)',
+                  'Critical Breach: Target penetrated inside protected perimeter boundary',
                   false,
                   snap,
                   Math.round(pPerson.score * 100),
                   'detector',
                   detectionCam
                 );
+                newAlert.sev = 'high';
                 addAlert(newAlert);
               }
-            } else {
-              if (Date.now() - lastIntrusionRef.current > 2000) {
+            }
+            // B) NEAR THE FENCE (WARNING BUFFER ZONE: 52% <= bottomY < 72%)
+            else if (bottomY >= 52) {
+              setFenceStatus('near_warning');
+              setIsFenceBreached(false);
+
+              // Check 1: Suspicious Crawling / Crouching infiltration posture
+              const isCrawling = personAspect > 0.72 || (pPerson.h < 26 && bottomY > 58);
+              if (isCrawling && nowTime - lastIntrusionRef.current > 6000 && armed) {
+                lastIntrusionRef.current = nowTime;
+                const snap = captureFrameWithBoxes(video, boxes, osdMeta);
+                const newAlert = mkAlert(
+                  'intrusion',
+                  detectionCam.id,
+                  0,
+                  'Suspicious Infiltration: Low-profile crawling/crouching motion near virtual fence boundary',
+                  false,
+                  snap,
+                  Math.round(pPerson.score * 100),
+                  'detector',
+                  detectionCam
+                );
+                newAlert.sev = 'high';
+                addAlert(newAlert);
+              }
+
+              // Check 2: Suspicious lingering / prowling near fence (> 2.5 seconds)
+              const bt = bufferTrackerRef.current;
+              if (!bt.firstSeen) {
+                bt.firstSeen = nowTime;
+                bt.alerted = false;
+              } else if (nowTime - bt.firstSeen >= 2500 && !bt.alerted && armed) {
+                bt.alerted = true;
+                lastBufferLoiterRef.current = nowTime;
+                const snap = captureFrameWithBoxes(video, boxes, osdMeta);
+                const newAlert = mkAlert(
+                  'loiter',
+                  detectionCam.id,
+                  0,
+                  `Suspicious Activity: Subject lingering/prowling near virtual fence buffer zone (< 2m from boundary)`,
+                  false,
+                  snap,
+                  Math.round(pPerson.score * 100),
+                  'detector',
+                  detectionCam
+                );
+                newAlert.sev = 'med';
+                addAlert(newAlert);
+              }
+            }
+            // C) OUTSIDE AND FAR FROM FENCE
+            else {
+              bufferTrackerRef.current.firstSeen = null;
+              bufferTrackerRef.current.alerted = false;
+              if (nowTime - lastIntrusionRef.current > 2000) {
                 setIsFenceBreached(false);
+                setFenceStatus('clear');
               }
             }
 
-            // 3. Stationary Loitering Check (> 4 seconds)
+            // 3. Stationary Loitering Check (> 4 seconds anywhere in frame)
             const cx = pPerson.left + pPerson.w / 2;
             const cy = pPerson.top + pPerson.h / 2;
             const lt = loiterTrackerRef.current;
@@ -557,7 +660,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               }
             }
           } else {
-            // Reset loiter if person left
+            // Reset loiter and buffer if no person detected
+            bufferTrackerRef.current.firstSeen = null;
+            bufferTrackerRef.current.alerted = false;
+            setIsFenceBreached(false);
+            setFenceStatus('clear');
             if (loiterTrackerRef.current.firstSeen && Date.now() - (loiterTrackerRef.current.lastSeen || 0) > 2000) {
               loiterTrackerRef.current.firstSeen = null;
               loiterTrackerRef.current.alerted = false;
@@ -569,7 +676,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } finally {
           isProcessing = false;
         }
-      }, 350);
+      }, 120);
     }
 
     startLoop();
@@ -848,6 +955,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         webcamCamId,
         isCamWebcamActive,
         isFenceBreached,
+        fenceStatus,
         activeLightboxAlert,
         fullscreenCamId,
         videoRef,

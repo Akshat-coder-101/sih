@@ -31,9 +31,12 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+scratch/
 *.db
+*.db*
 *.sqlite
 *.sqlite3
+*.backup
 .aes_key
 .env
 !.env.example

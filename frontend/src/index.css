@@ -192,9 +192,33 @@ h1, h2, h3, h4, .font-display {
   box-shadow: 0 0 12px rgba(101, 214, 139, 0.5);
 }
 
+.fence-line.warning {
+  background: rgba(250, 204, 21, 0.95);
+  box-shadow: 0 0 16px rgba(250, 204, 21, 0.9), 0 0 4px rgba(250, 204, 21, 1);
+}
+
 .fence-line.breach {
   background: rgba(255, 107, 95, 0.95);
   box-shadow: 0 0 16px rgba(255, 107, 95, 0.9), 0 0 4px rgba(255, 107, 95, 1);
+}
+
+.fence-buffer-zone {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 26%;
+  height: 20%;
+  pointer-events: none;
+  z-index: 9;
+  border-top: 1.5px dashed rgba(250, 204, 21, 0.55);
+  background: rgba(250, 204, 21, 0.05);
+  transition: all 0.3s ease;
+}
+
+.fence-buffer-zone.active {
+  background: rgba(250, 204, 21, 0.20);
+  border-top: 2px dashed rgba(250, 204, 21, 0.95);
+  box-shadow: inset 0 0 18px rgba(250, 204, 21, 0.25);
 }
 
 /* Reduced Motion Support */

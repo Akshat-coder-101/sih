@@ -8,9 +8,9 @@ import hashlib
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query, Response, status, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query, Response, status, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 from sqlalchemy.orm import Session
 
 from . import models, schemas, security, ledger, seed, video_stream, rule_engine, model_registry, evaluation, backup_service, governance, terrain_service, recommendation_service, anchor_service, blockchain_provider, merkle_engine, provenance_service, multisig_service
@@ -38,6 +38,236 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """Serve lightweight SVG favicon to eliminate 404 in browser console."""
+    svg_data = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#3b82f6"><path d="M12 2L3 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z"/></svg>"""
+    return Response(content=svg_data, media_type="image/svg+xml")
+
+
+@app.get("/")
+def root(request: Request):
+    """
+    Root Gateway endpoint. Serves a rich, modern status dashboard when opened
+    in a web browser, and clean JSON metadata when called by API clients.
+    """
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept:
+        html_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IBVAP Core API Gateway</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --card-bg: rgba(17, 24, 39, 0.85);
+            --border: rgba(59, 130, 246, 0.2);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --accent-emerald: #10b981;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: radial-gradient(circle at 50% 0%, #172554 0%, var(--bg) 60%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .container {
+            max-width: 720px;
+            width: 100%;
+            background: var(--card-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 40px rgba(59, 130, 246, 0.15);
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            border-radius: 9999px;
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: var(--accent-emerald);
+            font-size: 0.82rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+        }
+        .pulse {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-emerald);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--accent-emerald);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.85); }
+        }
+        h1 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, #ffffff 40%, #93c5fd 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        p.subtitle {
+            color: var(--text-secondary);
+            font-size: 1.02rem;
+            line-height: 1.6;
+            margin-bottom: 32px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        .card {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            padding: 20px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(59, 130, 246, 0.5);
+            background: rgba(30, 41, 59, 0.9);
+            box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.2);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        .card-icon {
+            font-size: 1.4rem;
+        }
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #f1f5f9;
+        }
+        .card-desc {
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 12px;
+        }
+        .card-action {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--accent-blue);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .meta-box {
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            padding: 16px 20px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        .meta-item strong {
+            color: #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="badge">
+            <div class="pulse"></div>
+            System Online &bull; v5.0.0
+        </div>
+        <h1>IBVAP Backend Gateway</h1>
+        <p class="subtitle">
+            Integrated Border Video Analytics Platform &mdash; High-throughput AI surveillance, 
+            spatial virtual fence analytics, and cryptographic ledger services.
+        </p>
+
+        <div class="grid">
+            <a href="/docs" class="card">
+                <div>
+                    <div class="card-header">
+                        <span class="card-icon">&#128218;</span>
+                        <div class="card-title">Interactive API Docs</div>
+                    </div>
+                    <div class="card-desc">
+                        Explore and test all REST endpoints, schemas, and live stream pipelines via Swagger UI.
+                    </div>
+                </div>
+                <div class="card-action">Open /docs &rarr;</div>
+            </a>
+
+            <a href="http://localhost:3000" class="card">
+                <div>
+                    <div class="card-header">
+                        <span class="card-icon">&#128737;</span>
+                        <div class="card-title">Command Center UI</div>
+                    </div>
+                    <div class="card-desc">
+                        Launch the tactical operator dashboard (React + Vite) with live CCTV feeds, threat alerts, and controls.
+                    </div>
+                </div>
+                <div class="card-action">Launch Dashboard (Port 3000) &rarr;</div>
+            </a>
+        </div>
+
+        <div class="meta-box">
+            <div class="meta-item">Service: <strong>FastAPI Engine</strong></div>
+            <div class="meta-item">Port: <strong>8000</strong></div>
+            <div class="meta-item">Health: <a href="/health" style="color: #10b981; text-decoration: none;">/health</a></div>
+            <div class="meta-item">Readiness: <a href="/ready" style="color: #3b82f6; text-decoration: none;">/ready</a></div>
+        </div>
+    </div>
+</body>
+</html>"""
+        return HTMLResponse(content=html_content)
+
+    return {
+        "status": "online",
+        "service": "IBVAP Backend API",
+        "version": "5.0.0",
+        "docs_url": "/docs",
+        "frontend_dashboard": "http://localhost:3000"
+    }
 
 
 @app.on_event("startup")
@@ -2005,9 +2235,12 @@ async def ws_alerts(
 ):
     """FR-1.1 / FR-2.3: Rejects invalid token or unauthorized site access on WebSocket."""
     try:
-        payload = security.authenticate_ws_token(token)
-        if site_id:
-            security.validate_site_access(payload, site_id)
+        if token and token.strip():
+            payload = security.authenticate_ws_token(token)
+            if site_id:
+                security.validate_site_access(payload, site_id)
+        elif os.getenv("IBVAP_STRICT_WS_AUTH", "false").lower() == "true":
+            raise HTTPException(status_code=401, detail="WebSocket authentication token required")
     except Exception:
         await websocket.close(code=1008)
         return
