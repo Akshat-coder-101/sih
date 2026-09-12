@@ -1,6 +1,13 @@
 import { Camera, Alert, FenceRule, AlertState } from '../types';
 
-const API_BASE = 'http://127.0.0.1:8000';
+const getHost = (): string => {
+  if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+    return window.location.hostname;
+  }
+  return '127.0.0.1';
+};
+
+const API_BASE = (import.meta as any).env?.VITE_API_BASE || `http://${getHost()}:8000`;
 
 export interface LedgerVerifyResponse {
   intact: boolean;
@@ -259,7 +266,10 @@ export const api = {
   },
 
   getWsUrl(token?: string): string {
-    return token ? `ws://127.0.0.1:8000/ws/alerts?token=${encodeURIComponent(token)}` : `ws://127.0.0.1:8000/ws/alerts`;
+    const wsProto = (typeof window !== 'undefined' && window.location?.protocol === 'https:') ? 'wss:' : 'ws:';
+    const host = getHost();
+    const base = `${wsProto}//${host}:8000/ws/alerts`;
+    return token ? `${base}?token=${encodeURIComponent(token)}` : base;
   },
 
   async login(username: string, password: string): Promise<UserAuth> {

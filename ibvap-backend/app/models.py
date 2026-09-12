@@ -1,7 +1,6 @@
 from sqlalchemy import Column, String, Integer, Boolean, Float, DateTime, ForeignKey, JSON, Text, Index
 from sqlalchemy.orm import relationship
-from datetime import datetime
-from .database import Base
+from .database import Base, utc_now
 
 
 class Site(Base):
@@ -14,7 +13,7 @@ class Site(Base):
     timezone = Column(String, default="UTC")
     connectivity_profile = Column(String, default="standard")  # standard | low_bandwidth | intermittent
     retention_days = Column(Integer, default=90)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
     cameras = relationship("Camera", back_populates="site", cascade="all, delete-orphan")
     memberships = relationship("SiteMembership", back_populates="site", cascade="all, delete-orphan")
@@ -30,7 +29,7 @@ class SiteMembership(Base):
     role = Column(String, nullable=False)            # operator | supervisor | admin
     status = Column(String, default="active")        # active | suspended | revoked
     membership_version = Column(Integer, default=1)
-    granted_at = Column(DateTime, default=datetime.utcnow)
+    granted_at = Column(DateTime, default=utc_now)
     revoked_at = Column(DateTime, nullable=True)
 
     site = relationship("Site", back_populates="memberships")
@@ -45,7 +44,7 @@ class CameraCredentialReference(Base):
     site_id = Column(String, ForeignKey("sites.id"), nullable=False)
     encrypted_credentials = Column(Text, nullable=False)  # AES-256-GCM
     secret_ref = Column(String, nullable=True)             # Key vault or env ref
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class Camera(Base):
@@ -109,7 +108,7 @@ class Alert(Base):
     resolved_by = Column(String, nullable=True)
     retention_expires_at = Column(DateTime, nullable=True)
     evidence_hash = Column(String, nullable=True)
-    ts = Column(DateTime, default=datetime.utcnow)
+    ts = Column(DateTime, default=utc_now)
     snapshot_enc = Column(Text, nullable=True)  # AES-256-GCM ciphertext of the JPEG data-URL
 
     camera = relationship("Camera", back_populates="alerts")
@@ -132,7 +131,7 @@ class AlertDisposition(Base):
     new_state = Column(String, nullable=False)
     reason_code = Column(String, nullable=False)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
     alert = relationship("Alert", back_populates="dispositions")
 
@@ -147,7 +146,7 @@ class AlertEscalation(Base):
     escalation_target = Column(String, nullable=False)  # supervisor | tactical_team | sector_lead
     deadline_ts = Column(DateTime, nullable=False)
     status = Column(String, default="pending")          # pending | acknowledged | missed
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class FenceRule(Base):
@@ -166,8 +165,8 @@ class FenceRule(Base):
     enabled = Column(Boolean, default=True)
     cooldown_seconds = Column(Integer, default=15)
     version = Column(String, default="1.0")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     camera = relationship("Camera", back_populates="fence_rules")
 
@@ -183,7 +182,7 @@ class RuleSetVersion(Base):
     rules_json = Column(JSON, nullable=False)
     approved_by = Column(String, nullable=True)
     active = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class ModelDeployment(Base):
@@ -200,7 +199,7 @@ class ModelDeployment(Base):
     approval_status = Column(String, default="approved")  # staged | approved | rejected | deprecated
     approved_by = Column(String, nullable=True)
     active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class ModelPromotion(Base):
@@ -213,7 +212,7 @@ class ModelPromotion(Base):
     to_version = Column(String, nullable=False)
     approved_by = Column(String, nullable=False)
     reason = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class EvidenceAsset(Base):
@@ -228,7 +227,7 @@ class EvidenceAsset(Base):
     content_hash = Column(String, nullable=False)    # SHA-256 of unencrypted payload
     encrypted_data = Column(Text, nullable=False)    # AES-256-GCM ciphertext
     key_version = Column(String, default="v1")       # Versioned encryption key reference
-    captured_at = Column(DateTime, default=datetime.utcnow)
+    captured_at = Column(DateTime, default=utc_now)
     retention_expires_at = Column(DateTime, nullable=True)
 
     alert = relationship("Alert", back_populates="evidence_assets")
@@ -257,7 +256,7 @@ class BackupRestoreJob(Base):
     records_count = Column(Integer, default=0)
     checksum = Column(String, nullable=False)        # SHA-256 of archive
     error_msg = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
     completed_at = Column(DateTime, nullable=True)
 
 
@@ -273,7 +272,7 @@ class C2Integration(Base):
     signing_secret = Column(String, nullable=False)
     schema_version = Column(String, default="1.0")
     enabled = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class C2DeliveryAttempt(Base):
@@ -290,7 +289,7 @@ class C2DeliveryAttempt(Base):
     attempts = Column(Integer, default=1)
     last_error = Column(Text, nullable=True)
     delivered_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class EvaluationDataset(Base):
@@ -303,7 +302,7 @@ class EvaluationDataset(Base):
     num_samples = Column(Integer, default=0)
     conditions_json = Column(JSON, default=lambda: ["day", "night", "rain", "fog", "long_distance"])
     privacy_approved = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class EvaluationReport(Base):
@@ -320,7 +319,7 @@ class EvaluationReport(Base):
     latency_p95_ms = Column(Float, nullable=False)
     per_class_metrics_json = Column(JSON, nullable=False)
     approved_by = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class GovernanceApproval(Base):
@@ -333,7 +332,7 @@ class GovernanceApproval(Base):
     legal_approval_ref = Column(String, nullable=False)
     approved_by = Column(String, nullable=False)
     restricted_mode = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class User(Base):
@@ -356,7 +355,7 @@ class AuditLog(Base):
     username = Column(String, nullable=False)
     action = Column(String, nullable=False)   # 'login', 'export_csv', 'toggle_camera', 'mark_reviewed', ...
     detail = Column(String, nullable=True)
-    ts = Column(DateTime, default=datetime.utcnow)
+    ts = Column(DateTime, default=utc_now)
 
 
 class SystemEvent(Base):
@@ -370,7 +369,7 @@ class SystemEvent(Base):
     source = Column(String, nullable=False)       # video_worker | rule_engine | yolo_detector | ledger
     message = Column(Text, nullable=False)
     metadata_json = Column(JSON, nullable=True)
-    ts = Column(DateTime, default=datetime.utcnow)
+    ts = Column(DateTime, default=utc_now)
 
 
 class LedgerRecord(Base):
@@ -383,7 +382,7 @@ class LedgerRecord(Base):
     alert_id = Column(String, ForeignKey("alerts.id"), unique=True)
     prev_hash = Column(String, nullable=False)
     record_hash = Column(String, nullable=False)
-    ts = Column(DateTime, default=datetime.utcnow)
+    ts = Column(DateTime, default=utc_now)
 
     alert = relationship("Alert", back_populates="ledger_record")
 
@@ -398,7 +397,7 @@ class LegalHold(Base):
     placed_by = Column(String, nullable=False)
     reason = Column(Text, nullable=False)
     active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class EvaluationAnnotation(Base):
@@ -410,7 +409,7 @@ class EvaluationAnnotation(Base):
     frame_index = Column(Integer, nullable=False)
     condition = Column(String, default="day")         # day | night | rain | fog | thermal
     boxes_json = Column(JSON, nullable=False)         # [{"class_name": "person", "box": [x, y, w, h]}]
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class TerrainEnrichment(Base):
@@ -430,7 +429,7 @@ class TerrainEnrichment(Base):
     dataset_source = Column(String, default="SRTM-v3 / CartoDEM-v1")
     data_freshness = Column(String, default="2026-Q1")
     is_partial = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
     alert = relationship("Alert", back_populates="terrain_enrichment")
 
@@ -451,7 +450,7 @@ class Recommendation(Base):
     reviewed_by = Column(String, nullable=True)
     review_notes = Column(Text, nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
     alert = relationship("Alert", back_populates="recommendation")
 
@@ -481,8 +480,8 @@ class LedgerAnchor(Base):
     last_verified_at = Column(DateTime, nullable=True)
     last_error = Column(Text, nullable=True)
     explorer_url = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now, index=True)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     __table_args__ = (
         Index("ix_ledger_anchors_site_seq", "site_id", "from_sequence", "through_sequence"),
@@ -507,7 +506,7 @@ class MerkleAnchor(Base):
     transaction_hash = Column(String, nullable=True, index=True)
     block_number = Column(Integer, nullable=True)
     created_by = Column(String, default="admin", nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=utc_now, index=True)
     submitted_at = Column(DateTime, nullable=True)
     confirmed_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True)
@@ -534,7 +533,7 @@ class AnchorSignature(Base):
     payload_digest = Column(String, nullable=False)
     status = Column(String, default="valid", nullable=False) # valid | revoked
     reason = Column(Text, nullable=True)
-    signed_at = Column(DateTime, default=datetime.utcnow)
+    signed_at = Column(DateTime, default=utc_now)
     expires_at = Column(DateTime, nullable=True)
 
     anchor = relationship("MerkleAnchor", back_populates="signatures")
@@ -554,5 +553,5 @@ class ModelProvenance(Base):
     preprocessing_config_hash = Column(String, nullable=False)
     provenance_hash = Column(String, nullable=False, index=True)
     registered_by = Column(String, default="system", nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 

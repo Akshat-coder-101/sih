@@ -260,12 +260,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     let ws: WebSocket | null = null;
     let reconnectTimeout: any = null;
+    let isCancelled = false;
 
     function connect() {
+      if (isCancelled) return;
       try {
-        const url = api.getWsUrl();
+        const token = currentUser?.accessToken;
+        const url = api.getWsUrl(token);
         ws = new WebSocket(url);
-        ws.onopen = () => setWebsocketConnected(true);
+        ws.onopen = () => {
+          if (!isCancelled) setWebsocketConnected(true);
+        };
         ws.onmessage = (event) => {
           try {
             const msg = JSON.parse(event.data);
@@ -287,22 +292,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             console.error('WS parse error:', e);
           }
         };
-        ws.onerror = () => setWebsocketConnected(false);
+        ws.onerror = () => {
+          if (!isCancelled) setWebsocketConnected(false);
+        };
         ws.onclose = () => {
-          setWebsocketConnected(false);
-          reconnectTimeout = setTimeout(connect, 4000);
+          if (!isCancelled) {
+            setWebsocketConnected(false);
+            reconnectTimeout = setTimeout(connect, 3000);
+          }
         };
       } catch (e) {
-        reconnectTimeout = setTimeout(connect, 4000);
+        if (!isCancelled) reconnectTimeout = setTimeout(connect, 3000);
       }
     }
 
     connect();
     return () => {
-      if (ws) ws.close();
+      isCancelled = true;
+      if (ws) {
+        try { ws.close(); } catch (_) {}
+      }
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
-  }, []);
+  }, [currentUser?.accessToken]);
 
   const startWebcam = async () => {
     try {

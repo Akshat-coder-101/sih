@@ -6,5 +6,16 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true
+  },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-tf': ['@tensorflow/tfjs', '@tensorflow-models/coco-ssd'],
+          'vendor-react': ['react', 'react-dom']
+        }
+      }
+    }
   }
 });
