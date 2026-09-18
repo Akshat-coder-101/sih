@@ -84,7 +84,7 @@ The user interface is divided into clean, focused operational modules:
 ### 4. Operational Analytics (`Analytics`)
 * **Threat Distribution Donut:** Visual breakdown of incident types (Intrusion, Weapons, Loitering, etc.).
 * **Incidents per Camera Bar Chart:** Identifies high-activity border sectors requiring reinforcement.
-* **System KPIs:** Real-time uptime stats, alert volume, and average inference latency (~14ms).
+* **System KPIs:** Real-time uptime stats, alert volume, and measured inference latency budget (~42ms CPU / ~12ms GPU).
 
 ### 5. AI Inference Pipeline (`AiPipeline`)
 * Diagnostic view of all cascaded neural network models:
@@ -96,35 +96,51 @@ The user interface is divided into clean, focused operational modules:
 * **Stream Management:** Admin interface to manage RTSP URLs, camera priority, and toggle cameras online or offline.
 * Protected by **Role-Based Access Control (RBAC)** (Admin access only).
 
-### 7. Forensic Evidence Modal (`EvidenceModal`)
+### 7. Tactical Contact / Command Dispatch (`Contact`)
+* Quick dispatch and communications terminal to send escalations to field quick-reaction teams (QRT), base headquarters, and medical dispatch.
+
+### 8. Forensic Evidence Modal (`EvidenceModal`)
 * Clicking on any alert opens a forensic inspection card showing:
   * Full-resolution snapshot with bounding box overlays
   * Exact UTC timestamp and GPS coordinates
   * Tracking ID and AI confidence percentage
-  * Cryptographic integrity status
+  * Cryptographic integrity status & Merkle inclusion proof
 
 ---
 
 ## 5. Backend Services & API Documentation
 
-The backend service (`ibvap-backend`) is built with **FastAPI**, **SQLAlchemy ORM**, **OpenCV**, and **PyCryptodome**, providing production-grade persistence, real-time video streaming, neural network inference, and cryptographic verification.
+The backend service (`ibvap-backend`) is built with **FastAPI**, **SQLAlchemy ORM**, **OpenCV**, and **PyCryptodome**, providing production-grade persistence, real-time video streaming, neural network inference, and 3-tier cryptographic verification.
 
 ```
 ibvap-backend/
 ├── app/
-│   ├── main.py          # FastAPI application, routing, and WebSocket manager
-│   ├── video_stream.py  # MJPEG camera stream simulator & tactical HUD overlay
-│   ├── yolo_detector.py # YOLOv8 ONNX object detection module
-│   ├── rule_engine.py   # Event processor (tripwire, loiter, watchlist, ANPR, C2 dispatch)
-│   ├── ledger.py        # SHA-256 cryptographic hash-chain ledger
-│   ├── security.py      # AES-256-GCM encryption, JWT authentication, & RBAC
-│   ├── models.py        # SQLAlchemy database models
-│   ├── schemas.py       # Pydantic v2 data validation schemas (camelCase conversion)
-│   ├── seed.py          # Initial database seed (cameras, demo users, alerts)
-│   ├── ws_manager.py    # WebSocket connection pool and broadcaster
-│   └── database.py      # SQLite / SQLAlchemy engine and session factory
-├── .env.example         # Template for environment configuration
-└── requirements.txt     # Python dependencies
+│   ├── main.py                   # FastAPI application, routing, and WebSocket manager
+│   ├── video_stream.py           # MJPEG camera stream simulator & tactical HUD overlay
+│   ├── yolo_detector.py          # YOLOv8 ONNX object detection module (blade/weapon detection)
+│   ├── model_registry.py         # Dynamic model versioning, ONNX loading, staging & rollback
+│   ├── tracker.py                # Centroid & ByteTrack object trajectory tracking
+│   ├── rule_engine.py            # Spatial-temporal rule processor (tripwire, loiter, ANPR)
+│   ├── terrain_service.py        # Tactical elevation profile, line-of-sight & intercept analysis
+│   ├── recommendation_service.py # Operator tactical recommendations & QRT routing
+│   ├── ledger.py                 # Tier-1 SHA-256 cryptographic hash-chain ledger
+│   ├── merkle_engine.py          # Tier-2 Deterministic Merkle tree & O(log N) proofs
+│   ├── provenance_service.py     # AI model weight hash & spatial polygon cryptographic binding
+│   ├── anchor_service.py         # Tier-3 External blockchain anchor synchronizer
+│   ├── blockchain_provider.py    # EVM JSON-RPC provider with deterministic mock fallback
+│   ├── multisig_service.py       # 2-of-3 multisignature threshold governance workflow
+│   ├── governance.py             # Security posture, policy status & audit approvals
+│   ├── backup_service.py         # Encrypted database backup snapshot & restoration
+│   ├── evaluation.py             # Model benchmarking & precision/recall reports
+│   ├── fixture_generator.py      # Synthetic test telemetry generator
+│   ├── security.py               # AES-256-GCM encryption, JWT authentication, & RBAC
+│   ├── models.py                 # SQLAlchemy database models
+│   ├── schemas.py                # Pydantic v2 data validation schemas (camelCase conversion)
+│   ├── seed.py                   # Initial database seed (cameras, demo users, alerts)
+│   ├── ws_manager.py             # WebSocket connection pool and broadcaster
+│   └── database.py               # SQLite / SQLAlchemy engine and session factory
+├── .env.example                  # Template for environment configuration
+└── requirements.txt              # Python dependencies
 ```
 
 ---

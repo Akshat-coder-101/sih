@@ -23,7 +23,7 @@ const INITIAL_CAMS: Camera[] = [
   { id: 'cam-1', name: 'CAM-01 · North Perimeter', location: 'BOP Alpha — North Fence Line', online: true, priority: 'High', fps: 9, night: false, scene: 'fence', geo: '29.5481°N 74.8763°E', anchor: { left: 44, top: 46, w: 9, h: 26 }, rtspUrl: 'rtsp://cam-1.bop.local:554/stream1', supportsWebcam: true, sourceType: 'webcam' },
   { id: 'cam-2', name: 'CAM-02 · Check Post Gate', location: 'BOP Alpha — Gate Road', online: true, priority: 'Medium', fps: 8, night: false, scene: 'gate', geo: '29.5502°N 74.8791°E', anchor: { left: 41, top: 52, w: 20, h: 24 }, rtspUrl: 'rtsp://cam-2.bop.local:554/stream2', sourceType: 'rtsp' },
   { id: 'cam-3', name: 'CAM-03 · Border Road', location: 'BOP Bravo — Approach Road', online: true, priority: 'High', fps: 9, night: true, scene: 'night', geo: '29.6104°N 74.9038°E', anchor: { left: 47, top: 50, w: 18, h: 22 }, rtspUrl: 'rtsp://cam-3.bop.local:554/stream1', sourceType: 'rtsp' },
-  { id: 'cam-4', name: 'CAM-04 · East Watchtower', location: 'BOP Bravo — East Ridge', online: false, priority: 'Medium', fps: 0, night: false, scene: 'fence', geo: '29.6140°N 74.9102°E', anchor: { left: 44, top: 46, w: 9, h: 26 }, rtspUrl: 'rtsp://cam-4.bop.local:554/stream2', sourceType: 'rtsp' },
+  { id: 'cam-4', name: 'CAM-04 · East Watchtower', location: 'BOP Bravo — East Ridge', online: true, priority: 'Medium', fps: 8, night: false, scene: 'fence', geo: '29.6140°N 74.9102°E', anchor: { left: 44, top: 46, w: 9, h: 26 }, rtspUrl: 'rtsp://cam-4.bop.local:554/stream2', sourceType: 'rtsp' },
 ];
 
 let alertSeq = 1;
@@ -101,7 +101,7 @@ interface AppContextType {
   toggleArmed: () => void;
   selectCam: (id: string) => void;
   goToPage: (page: PageId) => void;
-  markReviewed: (id: string) => void;
+  markReviewed: (id: string, reason?: string) => void;
   updateAlertState: (id: string, state: 'open' | 'acknowledged' | 'resolved' | 'false_positive', assignedTo?: string, note?: string) => void;
   openLightbox: (id: string) => void;
   closeLightbox: () => void;
@@ -762,10 +762,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, 3500);
   };
 
-  // Keyboard shortcut listener for 'K'
+  // Keyboard shortcut listener for 'K' (Explicit Demo Event Injection)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.key === 'k' || e.key === 'K') && !['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) {
+        showNotice('success', '[DEMO EVENT INJECTION] Synthetic weapon alert triggered via hotkey (K) for demonstration.');
         triggerWeaponDemo();
       }
     };
@@ -868,8 +869,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const markReviewed = (id: string) => {
-    updateAlertState(id, 'acknowledged');
+  const markReviewed = (id: string, reason?: string) => {
+    const isFP = reason?.startsWith('false_alarm');
+    const newState = isFP ? 'false_positive' : 'acknowledged';
+    updateAlertState(id, newState, undefined, reason || 'verified_threat');
   };
 
   const openLightbox = (id: string) => {

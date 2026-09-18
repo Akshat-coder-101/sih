@@ -242,6 +242,11 @@ export interface SingleFrameDetection {
   confidence: number;
   box: [number, number, number, number];
   normalizedBox: [number, number, number, number];
+  personType?: string;
+  isFriendly?: boolean;
+  uniformPattern?: string;
+  camoScore?: number;
+  textureVar?: number;
 }
 
 export interface SingleFrameAnalysis {
@@ -787,7 +792,10 @@ export const api = {
   },
 
   getSingleFrameUrl(camId: string, token?: string): string {
-    return token ? `${API_BASE}/cameras/${camId}/frame?token=${encodeURIComponent(token)}` : `${API_BASE}/cameras/${camId}/frame`;
+    const params = new URLSearchParams();
+    if (token) params.set('token', token);
+    params.set('t', Date.now().toString());
+    return `${API_BASE}/cameras/${camId}/frame?${params.toString()}`;
   },
 
   async stepFrame(camId: string, token?: string): Promise<{ camId: string; frameIndex: number; hasDetections: boolean; detectionsCount: number }> {

@@ -37,6 +37,16 @@ class ModelRegistry:
         self.device = "CPU"
         self.classes = DEFAULT_CLASSES
         self.model_path = os.getenv("IBVAP_MODEL_PATH", None)
+        if not self.model_path:
+            candidate_paths = [
+                os.path.join(os.path.dirname(__file__), "..", "yolo_weights.onnx"),
+                os.path.join(os.path.dirname(__file__), "yolo_weights.onnx"),
+                "/Users/pranjalmishra/sih/sih/ibvap-backend/yolo_weights.onnx"
+            ]
+            for p in candidate_paths:
+                if os.path.exists(p):
+                    self.model_path = p
+                    break
         self.is_loaded = False
         self.last_error = None
         self.load_timestamp = None
@@ -245,6 +255,9 @@ class ModelRegistry:
             "promotion_count": len(self.promotion_log),
             "load_time_sec": round(time.time() - self.load_timestamp, 1) if self.load_timestamp else 0.0,
         }
+
+    def summary(self) -> Dict[str, Any]:
+        return self.get_status()
 
 
 # Global singleton instance

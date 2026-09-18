@@ -16,7 +16,7 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 import asyncio
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any
 from sqlalchemy.orm import Session
 
 from . import models, schemas, security, ledger
@@ -243,10 +243,31 @@ def evaluate_track_against_rules_sync(
                     trigger_reason = f"Zone '{rule.name}' breached by {track.class_name} ({track.track_id})"
 
         if triggered:
+            # Blue-Force / Friendly Army Patrol De-escalation:
+            # Verified military personnel on routine patrol do not trigger intrusion alerts
+            if getattr(track, "is_friendly", False):
+                logger.info(f"[RuleEngine] De-escalated intrusion: Friendly Army patrol detected ({track.track_id}) in rule '{rule.name}'")
+                continue
+
+            # Animal-Class False-Positive Suppression (Review P1):
+            # Wildlife and stray cattle (cow, dog, sheep, bird) are treated as informational activity,
+            # avoiding perimeter siren false alarms while keeping the sentry aware.
+            if getattr(track, "is_animal", False) or track.class_name in ("cow", "dog", "horse", "sheep", "bird", "cat"):
+                logger.info(f"[RuleEngine] Animal activity suppressed from perimeter siren: {track.class_name} ({track.track_id})")
+                continue
+
             if is_in_cooldown(camera.id, rule.id, track.track_id, rule.cooldown_seconds):
                 continue
 
             alert_id = generate_alert_id()
+
+            # Infiltration Crawling Posture Check (Review P2):
+            is_crawling = getattr(track, "is_crawling", False)
+            if is_crawling:
+                trigger_reason += " [TACTICAL INFILTRATION: Low-profile crawling posture detected]"
+                alert_type = "crawling_infiltration"
+            else:
+                alert_type = "intrusion" if rule.rule_type != "loiter_zone" else "loiter"
 
             # Process evidence snapshot & SHA-256 hash (FR-8.1, FR-8.2)
             snapshot_data_url = None
@@ -264,8 +285,8 @@ def evaluate_track_against_rules_sync(
             alert = models.Alert(
                 id=alert_id,
                 site_id=site_id,
-                type="intrusion" if rule.rule_type != "loiter_zone" else "loiter",
-                sev=rule.severity,
+                type=alert_type,
+                sev="critical" if is_crawling else rule.severity,
                 cam_id=camera.id,
                 cam_name=camera.name,
                 location=camera.location,
@@ -367,6 +388,96 @@ def evaluate_track_against_rules_sync(
             return alert
 
     return None
+
+
+def create_tamper_alert_sync(
+    db: Session,
+    camera: models.Camera,
+    tamper_info: Dict[str, Any],
+    frame_bytes: Optional[bytes] = None
+) -> Optional[models.Alert]:
+    """
+    Generate an instantaneous SYSTEM / TAMPER alert when lens obstruction, defocus,
+    or stream stall is detected (Review Section 3.1).
+    """
+    rule_key = f"tamper_{tamper_info.get('tamper_type', 'lens_obstruction')}"
+    if is_in_cooldown(camera.id, rule_key, "system", 60.0):
+        return None
+
+    now_ts = datetime.utcnow()
+    alert_id = generate_alert_id()
+
+    snapshot_data_url = None
+    content_hash = ""
+    encrypted_snapshot = None
+
+    if frame_bytes:
+        content_hash = hashlib.sha256(frame_bytes).hexdigest()
+        snapshot_data_url = f"data:image/jpeg;base64,{base64.b64encode(frame_bytes).decode('ascii')}"
+        encrypted_snapshot = security.encrypt_field(snapshot_data_url)
+
+    site_id = getattr(camera, "site_id", "site-alpha") or "site-alpha"
+    detail = f"CAMERA HEALTH / TAMPER DETECTED: {tamper_info.get('detail', 'Sensor anomaly')}"
+
+    alert = models.Alert(
+        id=alert_id,
+        site_id=site_id,
+        type="tamper",
+        sev=tamper_info.get("severity", "high"),
+        cam_id=camera.id,
+        cam_name=camera.name,
+        location=camera.location,
+        confidence=98,
+        track_id="#SYS-TAMPER",
+        detail_enc=security.encrypt_field(detail),
+        reviewed=False,
+        state="open",
+        provenance="detector",
+        model_version="health-v1.0",
+        rule_id="RULE-HEALTH-TAMPER",
+        rule_version="1.0",
+        source_frame_time=now_ts,
+        evidence_hash=content_hash if content_hash else None,
+        ts=now_ts,
+        snapshot_enc=encrypted_snapshot,
+    )
+    db.add(alert)
+    db.commit()
+    db.refresh(alert)
+
+    # Append to SHA-256 Ledger
+    ledger.append_to_ledger(db, alert)
+
+    # Broadcast via WebSocket
+    out = schemas.AlertOut(
+        id=alert.id,
+        type=alert.type,
+        sev=alert.sev,
+        cam_id=alert.cam_id,
+        cam_name=alert.cam_name,
+        location=alert.location,
+        confidence=alert.confidence,
+        track_id=alert.track_id,
+        detail=detail,
+        reviewed=False,
+        state="open",
+        provenance="detector",
+        rule_id="RULE-HEALTH-TAMPER",
+        rule_version="1.0",
+        source_frame_time=now_ts,
+        evidence_hash=content_hash,
+        ts=alert.ts,
+        snapshot=snapshot_data_url
+    )
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(manager.broadcast_alert(out.model_dump(by_alias=True)))
+    except Exception:
+        pass
+
+    logger.warning(f"[TAMPER ALERT] Emitted physical tamper alert {alert.id} for {camera.id}: {detail}")
+    return alert
 
 
 async def trigger_periodic_rule_events():

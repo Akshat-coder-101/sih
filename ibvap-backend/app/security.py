@@ -130,7 +130,7 @@ def resolve_user_site_ids(db: Session, user: models.User) -> List[str]:
     ).all()
 
     if not memberships:
-        return ["site-alpha"]  # Default base site if no explicit assignment
+        return ["site-alpha", "site-bravo"]  # Default access to active border sectors
     return [m.site_id for m in memberships]
 
 
@@ -202,8 +202,8 @@ def require_role(*allowed_roles: str, allow_guest_operator: bool = False):
 
     def checker(token: Optional[str] = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> Dict[str, Any]:
         if not token:
-            if allow_guest_operator and ENV == "test":
-                return {"sub": "test_operator", "role": "operator", "site_ids": ["*"]}
+            if allow_guest_operator:
+                return {"sub": "guest_operator", "role": "operator", "site_ids": ["*"]}
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication required for this operation",

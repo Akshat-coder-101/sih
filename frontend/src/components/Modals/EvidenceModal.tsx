@@ -202,15 +202,30 @@ export const EvidenceModal: React.FC = () => {
         </div>
 
         {/* Modal Actions */}
-        <div className="flex gap-2 px-4 py-3 border-t border-rind-500/15 bg-ink-850 justify-end">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-rind-500/15 bg-ink-850">
           {!a.reviewed && (
-            <button
-              onClick={() => markReviewed(a.id)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-rad3 bg-leaf-500 hover:bg-leaf-600 text-ink-950 font-bold text-xs transition-colors shadow-sm"
-            >
-              <i className="ti ti-check text-sm"></i>
-              Mark Acknowledged &amp; Verified
-            </button>
+            <div className="flex items-center gap-2">
+              <select
+                id="disposition-reason-select"
+                defaultValue="verified_threat"
+                className="bg-ink-900 border border-rind-500/30 text-rind-200 text-xs px-2.5 py-1.5 rounded-rad3 font-mono"
+              >
+                <option value="verified_threat">Verified Threat / Actioned</option>
+                <option value="authorized_patrol">Authorized Friendly Patrol</option>
+                <option value="false_alarm_animal">False Alarm — Animal Activity</option>
+                <option value="false_alarm_weather">False Alarm — Environmental / Glare</option>
+              </select>
+              <button
+                onClick={() => {
+                  const sel = document.getElementById('disposition-reason-select') as HTMLSelectElement;
+                  markReviewed(a.id, sel?.value || 'verified_threat');
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-rad3 bg-leaf-500 hover:bg-leaf-600 text-ink-950 font-bold text-xs transition-colors shadow-sm"
+              >
+                <i className="ti ti-check text-sm"></i>
+                Acknowledge Triage
+              </button>
+            </div>
           )}
           <button
             onClick={closeLightbox}

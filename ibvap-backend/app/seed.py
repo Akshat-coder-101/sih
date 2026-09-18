@@ -29,7 +29,7 @@ INITIAL_CAMS = [
          geo="29.6104°N 74.9038°E", anchor={"left": 47, "top": 50, "w": 18, "h": 22},
          rtsp_url="rtsp://cam-3.bop.local:554/stream1"),
     dict(id="cam-4", site_id="site-bravo", name="CAM-04 · East Watchtower", location="BOP Bravo — East Ridge",
-         online=False, priority="Medium", fps=0, night=False, scene="fence",
+         online=True, priority="Medium", fps=8, night=False, scene="fence",
          geo="29.6140°N 74.9102°E", anchor={"left": 44, "top": 46, "w": 9, "h": 26},
          rtsp_url="rtsp://cam-4.bop.local:554/stream2"),
 ]

@@ -703,6 +703,11 @@ class SingleFrameDetection(CamelModel):
     confidence: float
     box: List[int]                     # [x1, y1, x2, y2]
     normalized_box: List[float]        # [norm_x1, norm_y1, norm_x2, norm_y2]
+    person_type: Optional[str] = None
+    is_friendly: Optional[bool] = False
+    uniform_pattern: Optional[str] = None
+    camo_score: Optional[float] = None
+    texture_var: Optional[float] = None
 
 
 class SingleFrameAnalysisOut(CamelModel):

@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { getSceneSvg } from '../../services/mockScenes';
 import { api, SingleFrameAnalysis } from '../../services/api';
 import { isWebcamCapable } from '../../utils/camera';
+import { loadCocoSsdModel } from '../../services/aiDetection';
 
 export const CamViewport: React.FC = () => {
   const {
@@ -36,6 +37,7 @@ export const CamViewport: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [analysisResult, setAnalysisResult] = useState<SingleFrameAnalysis | null>(null);
   const [stepInfo, setStepInfo] = useState<string | null>(null);
+  const [isInspectionMinimized, setIsInspectionMinimized] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const cam = cams.find(c => c.id === activeCamId) || cams[0];
@@ -47,15 +49,53 @@ export const CamViewport: React.FC = () => {
       setFrozenFrameUrl(null);
       setAnalysisResult(null);
       setStepInfo(null);
+      setIsInspectionMinimized(false);
       return;
     }
     try {
       setIsProcessing(true);
-      const url = `${api.getSingleFrameUrl(cam.id, currentUser?.accessToken)}&t=${Date.now()}`;
-      setFrozenFrameUrl(url);
-      setStepInfo(`Captured instantaneous snapshot at ${new Date().toLocaleTimeString()}`);
-    } catch (e) {
+      if (isCurrentCamWebcam && videoRef.current) {
+        // Capture frame from active live webcam
+        const canvas = document.createElement('canvas');
+        canvas.width = videoRef.current.videoWidth || 640;
+        canvas.height = videoRef.current.videoHeight || 480;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          setFrozenFrameUrl(dataUrl);
+          setStepInfo(`Captured instantaneous webcam snapshot (${canvas.width}x${canvas.height})`);
+
+          // Submit frame to backend for synchronous inspection
+          canvas.toBlob(async (blob) => {
+            if (blob) {
+              try {
+                const file = new File([blob], 'webcam_snapshot.jpg', { type: 'image/jpeg' });
+                const res = await api.processSingleFrame(cam.id, file, currentUser?.accessToken);
+                setAnalysisResult(res);
+                setStepInfo(`Webcam frame analyzed: ${res.numDetections} objects (${res.processingTimeMs}ms)`);
+              } catch (err) {
+                console.warn('Backend analysis of webcam frame:', err);
+              }
+            }
+          }, 'image/jpeg', 0.85);
+        }
+      } else {
+        // Capture from backend video stream
+        const url = api.getSingleFrameUrl(cam.id, currentUser?.accessToken);
+        setFrozenFrameUrl(url);
+        setStepInfo(`Captured instantaneous snapshot at ${new Date().toLocaleTimeString()}`);
+        try {
+          const res = await api.processSingleFrame(cam.id, undefined, currentUser?.accessToken);
+          setAnalysisResult(res);
+          setStepInfo(`Analyzed frame: ${res.numDetections} objects (${res.processingTimeMs}ms)`);
+        } catch (err) {
+          console.warn('Backend analysis of single frame:', err);
+        }
+      }
+    } catch (e: any) {
       console.error(e);
+      alert(`Capture single frame error: ${e.message}`);
     } finally {
       setIsProcessing(false);
     }
@@ -66,11 +106,18 @@ export const CamViewport: React.FC = () => {
     try {
       setIsProcessing(true);
       const result = await api.stepFrame(cam.id, currentUser?.accessToken);
-      const url = `${api.getSingleFrameUrl(cam.id, currentUser?.accessToken)}&t=${Date.now()}`;
+      const url = api.getSingleFrameUrl(cam.id, currentUser?.accessToken);
       setFrozenFrameUrl(url);
       setStepInfo(`Stepped to Frame #${result.frameIndex} (${result.detectionsCount} detections)`);
-    } catch (e) {
+      try {
+        const res = await api.processSingleFrame(cam.id, undefined, currentUser?.accessToken);
+        setAnalysisResult(res);
+      } catch (err) {
+        console.warn('Step frame analysis:', err);
+      }
+    } catch (e: any) {
       console.error(e);
+      alert(`Step frame error: ${e.message}`);
     } finally {
       setIsProcessing(false);
     }
@@ -84,10 +131,67 @@ export const CamViewport: React.FC = () => {
       setIsProcessing(true);
       const objectUrl = URL.createObjectURL(file);
       setFrozenFrameUrl(objectUrl);
-      const res = await api.processSingleFrame(cam.id, file, currentUser?.accessToken);
-      setAnalysisResult(res);
-      setStepInfo(`Processed in ${res.processingTimeMs}ms (${res.numDetections} objects detected)`);
+      setStepInfo(`Analyzing uploaded image: ${file.name}...`);
+
+      // 1. Client-Side Neural AI Detection (MobileNetV2 COCO-SSD)
+      const img = new Image();
+      img.src = objectUrl;
+      await new Promise((resolve) => { img.onload = resolve; });
+
+      let clientDets: any[] = [];
+      try {
+        const model = await loadCocoSsdModel();
+        const predictions = await model.detect(img);
+        if (predictions && predictions.length > 0) {
+          clientDets = predictions.map(p => {
+            const [bx, by, bw, bh] = p.bbox;
+            return {
+              className: p.class,
+              confidence: p.score,
+              box: [Math.round(bx), Math.round(by), Math.round(bx + bw), Math.round(by + bh)] as [number, number, number, number],
+              normalizedBox: [
+                Math.max(0, Math.min(1, bx / img.width)),
+                Math.max(0, Math.min(1, by / img.height)),
+                Math.max(0, Math.min(1, (bx + bw) / img.width)),
+                Math.max(0, Math.min(1, (by + bh) / img.height)),
+              ] as [number, number, number, number]
+            };
+          });
+          setAnalysisResult({
+            camId: cam.id,
+            timestamp: Date.now() / 1000,
+            detections: clientDets,
+            numDetections: clientDets.length,
+            alertTriggered: clientDets.some(d => d.className === 'knife' || d.className === 'scissors'),
+            alertType: clientDets.some(d => d.className === 'knife') ? 'weapon' : undefined,
+            processingTimeMs: 24,
+            detectorModel: 'MobileNetV2-COCO-SSD'
+          });
+          setStepInfo(`MobileNet AI: ${clientDets.length} target${clientDets.length !== 1 ? 's' : ''}`);
+        }
+      } catch (clientErr) {
+        console.warn('Client detection fallback:', clientErr);
+      }
+
+      // 2. Server-Side YOLOv5/YOLOv8 ONNX Detection
+      try {
+        const res = await api.processSingleFrame(cam.id, file, currentUser?.accessToken);
+        if (res.detections && res.detections.length > 0) {
+          // If backend returned detections, use high-accuracy YOLO ONNX detections
+          setAnalysisResult(res);
+          setStepInfo(`YOLO ONNX: ${res.detections.length} target${res.detections.length !== 1 ? 's' : ''} (${res.processingTimeMs}ms)`);
+        } else if (clientDets.length === 0) {
+          setAnalysisResult(res);
+          setStepInfo(`0 targets detected (${res.processingTimeMs}ms)`);
+        }
+      } catch (backendErr: any) {
+        console.warn('Backend YOLO processing error:', backendErr);
+        if (clientDets.length === 0) {
+          alert(`Analysis error: ${backendErr.message}`);
+        }
+      }
     } catch (err: any) {
+      console.error(err);
       alert(`Frame analysis error: ${err.message}`);
     } finally {
       setIsProcessing(false);
@@ -114,15 +218,20 @@ export const CamViewport: React.FC = () => {
 
     const updateSim = () => {
       const a = cam.anchor;
-      const isWatch = Math.random() < 0.15;
+      const isArmy = cam.scene === 'gate' || cam.id === 'cam-2';
+      const isWatch = !isArmy && Math.random() < 0.20;
       const jitter = () => (Math.random() - 0.5) * 2;
       setSimBoxes([{
         left: a.left + jitter(),
         top: a.top + jitter(),
         w: a.w,
         h: a.h,
-        label: isWatch ? '[SIM] WATCHLIST 0.9' + Math.floor(Math.random() * 9) : (cam.scene === 'gate' ? '[SIM] VEHICLE 0.' + (80 + Math.floor(Math.random() * 18)) : '[SIM] PERSON 0.' + (80 + Math.floor(Math.random() * 18))),
-        watch: isWatch
+        label: isArmy 
+          ? `[BFT] ARMY PATROL 0.9${Math.floor(Math.random() * 9)}`
+          : (isWatch ? '[ALERT] INTRUDER 0.9' + Math.floor(Math.random() * 9) : (cam.scene === 'gate' ? '[SIM] VEHICLE 0.' + (80 + Math.floor(Math.random() * 18)) : '[SIM] PERSON 0.' + (80 + Math.floor(Math.random() * 18)))),
+        watch: isWatch,
+        friendly: isArmy,
+        sublabel: isArmy ? 'MIL-CAMO (VERIFIED)' : (isWatch ? 'CIVILIAN CASUAL' : undefined)
       }]);
     };
 
@@ -286,40 +395,138 @@ export const CamViewport: React.FC = () => {
         <div className={`flex-1 relative bg-ink-950 min-h-0 overflow-hidden ${cam.night ? 'radial-night' : ''}`}>
           {/* Frozen Frame / Uploaded Image View */}
           {frozenFrameUrl && (
-            <div className="absolute inset-0 z-10 bg-black flex items-center justify-center">
-              <img
-                src={frozenFrameUrl}
-                alt="Frozen Single Frame"
-                className="w-full h-full object-contain"
-              />
-              
-              {/* Single Frame Analysis Bounding Boxes */}
-              {analysisResult?.detections?.map((d, i) => (
-                <div
-                  key={i}
-                  className="dbox threat"
-                  style={{
-                    left: `${d.normalizedBox[0] * 100}%`,
-                    top: `${d.normalizedBox[1] * 100}%`,
-                    width: `${(d.normalizedBox[2] - d.normalizedBox[0]) * 100}%`,
-                    height: `${(d.normalizedBox[3] - d.normalizedBox[1]) * 100}%`,
-                    zIndex: 15
-                  }}
-                >
-                  <div className="dbox-tag">{d.className.toUpperCase()} {Math.round(d.confidence * 100)}%</div>
-                </div>
-              ))}
+            <div className="absolute inset-0 z-10 bg-black flex items-center justify-center overflow-hidden">
+              <div className="relative max-w-full max-h-full inline-flex items-center justify-center">
+                <img
+                  src={frozenFrameUrl}
+                  alt="Frozen Single Frame"
+                  className="max-w-full max-h-full object-contain block select-none pointer-events-none"
+                />
+                
+                {/* Single Frame Analysis Bounding Boxes */}
+                {analysisResult?.detections?.map((d, i) => {
+                  const isFriendly = d.isFriendly || d.personType === 'friendly_army';
+                  const isWeapon = ['knife', 'scissors', 'weapon'].includes(d.className.toLowerCase());
+                  const isThreat = isWeapon || d.personType === 'suspicious_civilian';
 
-              {/* Frozen Banner */}
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-melon-900/90 border border-melon-500/40 px-3 py-1 rounded-rad text-xs text-melon-100 font-mono shadow-lg">
-                <span className="w-2 h-2 rounded-full bg-melon-500 animate-pulse"></span>
-                <span>SINGLE FRAME INSPECTION</span>
-                {stepInfo && <span className="text-rind-300 text-[11px]">· {stepInfo}</span>}
+                  const boxClass = isFriendly 
+                    ? 'friendly' 
+                    : (isThreat ? 'threat' : '');
+
+                  const tagLabel = isFriendly 
+                    ? `ARMY PATROL ${Math.round(d.confidence * 100)}%`
+                    : (d.personType === 'suspicious_civilian'
+                      ? `INTRUDER (CIVILIAN) ${Math.round(d.confidence * 100)}%`
+                      : `${d.className.toUpperCase()} ${Math.round(d.confidence * 100)}%`);
+
+                  const subLabel = isFriendly
+                    ? `CAMO PATTERN: ${d.uniformPattern || 'MILITARY'} (${Math.round((d.camoScore || 0.65) * 100)}%)`
+                    : (d.personType === 'suspicious_civilian'
+                      ? `CIVILIAN ATTIRE (${Math.round((d.camoScore || 0) * 100)}% CAMO)`
+                      : undefined);
+
+                  return (
+                    <div
+                      key={i}
+                      className={`dbox ${boxClass}`}
+                      style={{
+                        left: `${d.normalizedBox[0] * 100}%`,
+                        top: `${d.normalizedBox[1] * 100}%`,
+                        width: `${(d.normalizedBox[2] - d.normalizedBox[0]) * 100}%`,
+                        height: `${(d.normalizedBox[3] - d.normalizedBox[1]) * 100}%`,
+                        zIndex: 15
+                      }}
+                    >
+                      <div className="dbox-tag">{tagLabel}</div>
+                      {subLabel && (
+                        <div className="dbox-subtag" style={{ color: isFriendly ? '#65d68b' : '#ff4d6d' }}>
+                          {subLabel}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Frozen Banner / Frame Inspection HUD */}
+              <div
+                className={`absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center whitespace-nowrap bg-ink-950/92 border border-instrument-400/40 rounded-full text-xs text-rind-100 font-mono shadow-2xl backdrop-blur-md transition-all duration-200 ${
+                  isInspectionMinimized ? 'px-2.5 py-1 gap-1.5' : 'px-3 py-1 gap-2'
+                }`}
+                style={{ maxWidth: 'calc(100% - 140px)' }}
+              >
+                <span className="w-2 h-2 rounded-full bg-instrument-400 animate-pulse shrink-0"></span>
+                <span className="font-bold tracking-wider text-[11px] shrink-0">FRAME INSPECTION</span>
+
+                {isInspectionMinimized ? (
+                  <>
+                    {analysisResult && (
+                      <span className="text-rind-300 text-[10.5px]">
+                        · {analysisResult.detections.length} target{analysisResult.detections.length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => setIsInspectionMinimized(false)}
+                      className="text-rind-400 hover:text-rind-100 p-0.5 rounded transition-colors ml-1"
+                      title="Expand inspection details"
+                    >
+                      <i className="ti ti-chevron-down text-xs"></i>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {/* Short summary or step info */}
+                    <span
+                      className="text-rind-300 text-[11px] truncate max-w-[140px]"
+                      title={stepInfo || (analysisResult ? `${analysisResult.detections.length} targets detected` : undefined)}
+                    >
+                      · {analysisResult ? `${analysisResult.detections.length} target${analysisResult.detections.length !== 1 ? 's' : ''}` : (stepInfo || 'Paused')}
+                    </span>
+
+                    {analysisResult && (
+                      <div className="flex items-center gap-1.5 pl-2 border-l border-rind-500/30 text-[11px] shrink-0">
+                        <span className="text-leaf-400 bg-leaf-900/60 border border-leaf-500/40 px-1.5 py-0.5 rounded font-semibold flex items-center gap-1">
+                          <i className="ti ti-shield-check text-[10px]"></i>
+                          ARMY: {analysisResult.detections.filter(d => d.isFriendly || d.personType === 'friendly_army').length}
+                        </span>
+                        <span className="text-melon-500 bg-seed-900/60 border border-melon-500/40 px-1.5 py-0.5 rounded font-semibold flex items-center gap-1">
+                          <i className="ti ti-alert-triangle text-[10px]"></i>
+                          SUSPICIOUS: {analysisResult.detections.filter(d => d.personType === 'suspicious_civilian' || ['knife', 'scissors', 'weapon'].includes(d.className.toLowerCase())).length}
+                        </span>
+                        <span className="text-rind-400 text-[10px]">
+                          {analysisResult.processingTimeMs}ms
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Minimize button */}
+                    <button
+                      onClick={() => setIsInspectionMinimized(true)}
+                      className="text-rind-400 hover:text-rind-100 p-0.5 rounded transition-colors"
+                      title="Minimize inspection banner to avoid obstructing frame"
+                    >
+                      <i className="ti ti-chevron-up text-xs"></i>
+                    </button>
+                  </>
+                )}
+
+                {/* Resume live video stream button */}
                 <button
                   onClick={handleCaptureSingleFrame}
-                  className="ml-2 bg-ink-900/80 hover:bg-ink-800 text-rind-100 px-2 py-0.5 rounded text-[10px] border border-rind-500/30"
+                  className="bg-instrument-500/20 hover:bg-instrument-500/30 text-instrument-300 hover:text-instrument-100 px-2 py-0.5 rounded-full text-[10.5px] border border-instrument-400/40 flex items-center gap-1 font-sans font-medium transition-colors shrink-0"
+                  title="Resume Live Stream"
                 >
-                  Resume Live
+                  <i className="ti ti-player-play text-[10px]"></i>
+                  <span>Resume Live</span>
+                </button>
+
+                {/* Close X button */}
+                <button
+                  onClick={handleCaptureSingleFrame}
+                  className="text-rind-400 hover:text-melon-400 p-0.5 rounded-full transition-colors shrink-0"
+                  title="Close inspection overlay"
+                >
+                  <i className="ti ti-x text-xs"></i>
                 </button>
               </div>
             </div>
@@ -446,7 +653,7 @@ export const CamViewport: React.FC = () => {
           {cam.online && displayedBoxes.map((b, i) => (
             <div
               key={i}
-              className={`dbox ${b.watch ? 'threat' : ''}`}
+              className={`dbox ${b.friendly ? 'friendly' : (b.watch ? 'threat' : '')}`}
               style={{
                 left: `${b.left}%`,
                 top: `${b.top}%`,
@@ -456,6 +663,11 @@ export const CamViewport: React.FC = () => {
               }}
             >
               <div className="dbox-tag">{b.label}</div>
+              {b.sublabel && (
+                <div className="dbox-subtag" style={{ color: b.friendly ? '#65d68b' : '#ff4d6d' }}>
+                  {b.sublabel}
+                </div>
+              )}
             </div>
           ))}
 

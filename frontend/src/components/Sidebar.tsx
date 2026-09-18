@@ -25,7 +25,6 @@ export const Sidebar: React.FC = () => {
     { id: 'analytics', label: 'Analytics', icon: 'ti-chart-donut' },
     { id: 'models', label: 'AI Pipeline', icon: 'ti-cpu', group: 'System' },
     { id: 'cam-config', label: 'Camera Config', icon: 'ti-settings-2', adminOnly: true },
-    { id: 'about', label: 'About', icon: 'ti-info-circle' },
     { id: 'contact', label: 'Contact', icon: 'ti-mail' },
   ];
 
@@ -55,7 +54,7 @@ export const Sidebar: React.FC = () => {
             </div>
             <div>
               <div className="text-sm font-bold font-display tracking-tight text-rind-100">IBVAP</div>
-              <div className="text-[8.5px] tracking-[1.8px] uppercase text-instrument-400 font-semibold -mt-0.5">Watermelon Command</div>
+              <div className="text-[8.5px] tracking-[1.8px] uppercase text-instrument-400 font-semibold -mt-0.5">Tactical Command</div>
             </div>
           </div>
           {/* Mobile close button */}

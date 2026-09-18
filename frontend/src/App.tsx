@@ -8,7 +8,6 @@ import { AlertsLog } from './components/AlertsLog/AlertsLog';
 import { Analytics } from './components/Analytics/Analytics';
 import { AiPipeline } from './components/AiPipeline/AiPipeline';
 import { CameraConfig } from './components/CameraConfig/CameraConfig';
-import { About } from './components/About/About';
 import { EvidenceModal } from './components/Modals/EvidenceModal';
 import { FullscreenModal } from './components/Modals/FullscreenModal';
 import { Contact } from './components/Contact/Contact';
@@ -24,7 +23,7 @@ export const App: React.FC = () => {
     const titles: Record<string, string> = {
       monitor: 'Live Monitor', camgrid: 'Camera Grid', alerts: 'Alerts Log',
       analytics: 'Analytics', models: 'AI Pipeline', 'cam-config': 'Camera Configuration',
-      about: 'About IBVAP', contact: 'Contact IBVAP', privacy: 'Privacy Policy', terms: 'Terms of Use',
+      contact: 'Contact IBVAP', privacy: 'Privacy Policy', terms: 'Terms of Use',
       'not-found': 'Page Not Found'
     };
     document.title = `${titles[currentPage] || 'IBVAP'} | Command Center`;
@@ -50,7 +49,6 @@ export const App: React.FC = () => {
             {currentPage === 'analytics' && <Analytics />}
             {currentPage === 'models' && <AiPipeline />}
             {currentPage === 'cam-config' && <CameraConfig />}
-            {currentPage === 'about' && <About />}
             {currentPage === 'contact' && <Contact />}
             {(currentPage === 'privacy' || currentPage === 'terms') && <LegalPage type={currentPage} />}
             {currentPage === 'not-found' && <NotFound />}

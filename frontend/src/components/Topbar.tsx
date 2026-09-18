@@ -40,7 +40,6 @@ export const Topbar: React.FC = () => {
     analytics: 'Analytics',
     models: 'AI Inference Pipeline',
     'cam-config': 'Camera Configuration',
-    about: 'About IBVAP',
     contact: 'Contact & Support',
     privacy: 'Privacy Policy',
     terms: 'Terms of Use',

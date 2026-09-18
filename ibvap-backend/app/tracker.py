@@ -29,11 +29,23 @@ def compute_iou(boxA: List[float], boxB: List[float]) -> float:
 
 
 class Track:
-    def __init__(self, track_id: str, box: List[float], class_name: str, confidence: float):
+    def __init__(
+        self,
+        track_id: str,
+        box: List[float],
+        class_name: str,
+        confidence: float,
+        person_type: Optional[str] = None,
+        is_friendly: bool = False,
+        uniform_pattern: Optional[str] = None
+    ):
         self.track_id = track_id
         self.class_name = class_name
         self.confidence = confidence
         self.box = box  # [x, y, w, h] in normalized % (0-100) or pixels
+        self.person_type = person_type
+        self.is_friendly = is_friendly
+        self.uniform_pattern = uniform_pattern
         self.centroid = [box[0] + box[2] / 2.0, box[1] + box[3] / 2.0]
         self.history: List[List[float]] = [self.centroid]  # list of centroids
         self.first_seen = time.time()
@@ -42,8 +54,21 @@ class Track:
         self.hit_streak = 1
         self.direction = "stationary"  # left_to_right | right_to_left | top_to_bottom | bottom_to_top
 
-    def update(self, box: List[float], confidence: float):
+    def update(
+        self,
+        box: List[float],
+        confidence: float,
+        person_type: Optional[str] = None,
+        is_friendly: Optional[bool] = None,
+        uniform_pattern: Optional[str] = None
+    ):
         self.box = box
+        if person_type is not None:
+            self.person_type = person_type
+        if is_friendly is not None:
+            self.is_friendly = is_friendly
+        if uniform_pattern is not None:
+            self.uniform_pattern = uniform_pattern
         new_centroid = [box[0] + box[2] / 2.0, box[1] + box[3] / 2.0]
         self.history.append(new_centroid)
         if len(self.history) > 30:
@@ -105,7 +130,13 @@ class ObjectTracker:
 
             if best_iou >= self.iou_threshold and best_det_idx >= 0:
                 det = detections[best_det_idx]
-                track.update(det["box"], det["confidence"])
+                track.update(
+                    det["box"],
+                    det["confidence"],
+                    person_type=det.get("person_type"),
+                    is_friendly=det.get("is_friendly"),
+                    uniform_pattern=det.get("uniform_pattern")
+                )
                 matched_tracks.add(trk_id)
                 matched_detections.add(best_det_idx)
             else:
@@ -121,6 +152,9 @@ class ObjectTracker:
                     box=det["box"],
                     class_name=det["class_name"],
                     confidence=det["confidence"],
+                    person_type=det.get("person_type"),
+                    is_friendly=det.get("is_friendly", False),
+                    uniform_pattern=det.get("uniform_pattern")
                 )
 
         # Step 3: Remove dead tracks exceeding max_missed frames
